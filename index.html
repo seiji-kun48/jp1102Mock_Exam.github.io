@@ -257,7 +257,7 @@
             part4: {
                 title: "Part 4: แยกประโยคหลัก/ย่อย",
                 instruction: "ระบุประโยคหลัก (Main) และส่วนขยาย (Sub/Modifier)",
-                type: "fill-in",
+                type: "main-sub-split",
                 questions: [
                     { q: "これはシャオ先生{せんせい}が書{か}いた絵{え}です。", a: "Main: これは絵です。 / Sub: シャオ先生が書いた" },
                     { q: "今日{きょう}、きのう借{か}りた本{ほん}を返{かえ}します。", a: "Main: 今日、本を返します。 / Sub: きのう借りた" },
@@ -661,6 +661,32 @@
                                             </div>
                                         )}
                                         
+                                        {/* Dual Input for Part 4 */}
+                                        {examData[activePart].type === 'main-sub-split' && (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                                                <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100">
+                                                    <label className="block text-xs font-bold text-indigo-700 uppercase mb-1 tracking-wider">ประโยคหลัก (Main)</label>
+                                                    <input
+                                                        type="text"
+                                                        value={userAnswers[`${activePart}-${idx}-main`] || ''}
+                                                        onChange={(e) => setUserAnswers(prev => ({...prev, [`${activePart}-${idx}-main`]: e.target.value}))}
+                                                        placeholder="พิมพ์ประโยคหลัก..."
+                                                        className={`w-full p-2 rounded border border-indigo-200 focus:border-indigo-500 outline-none ${['text-base', 'text-xl', 'text-2xl'][settings.fontSize]} jp-text`}
+                                                    />
+                                                </div>
+                                                <div className="bg-orange-50 p-3 rounded-lg border border-orange-100">
+                                                    <label className="block text-xs font-bold text-orange-700 uppercase mb-1 tracking-wider">ส่วนขยาย (Sub)</label>
+                                                    <input
+                                                        type="text"
+                                                        value={userAnswers[`${activePart}-${idx}-sub`] || ''}
+                                                        onChange={(e) => setUserAnswers(prev => ({...prev, [`${activePart}-${idx}-sub`]: e.target.value}))}
+                                                        placeholder="พิมพ์ส่วนขยาย..."
+                                                        className={`w-full p-2 rounded border border-orange-200 focus:border-orange-500 outline-none ${['text-base', 'text-xl', 'text-2xl'][settings.fontSize]} jp-text`}
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+                                        
                                         {examData[activePart].type === 'fill-in' && (
                                             <textarea
                                                 value={userAnswers[`${activePart}-${idx}`] || ''}
@@ -832,5 +858,6 @@
     </script>
 </body>
 </html>
+
 
 
