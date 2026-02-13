@@ -34,30 +34,36 @@
             border-bottom: 2px solid #6366f1;
             background: #f9fafb;
             text-align: center;
-            padding: 0 0.25rem;
-            margin: 0 0.25rem;
-            border-radius: 0.25rem 0.25rem 0 0;
+            padding: 0 2px;
+            margin: 0 4px;
+            border-radius: 4px 4px 0 0;
             outline: none;
             transition: all 0.2s;
             font-family: 'Noto Sans JP', sans-serif;
-            min-width: 80px;
             color: #4338ca;
             font-weight: bold;
         }
+
+        /* Class สำหรับปรับขนาดช่อง */
+        .input-size-part1 {
+            width: 45px;      /* ขนาดเล็ก: พอดีคำช่วย 1-2 ตัว */
+            min-width: 35px;
+        }
+        
+        .input-size-part2 {
+            width: 110px;     /* ขนาดกลาง: พอดีคำศัพท์/ผันรูป */
+            min-width: 80px;
+        }
+
         .inline-input:focus {
             background: #e0e7ff;
             border-color: #4338ca;
         }
-        /* Sticky Header Fix */
-        header { z-index: 50; }
         
-        /* Hide Scrollbar for Nav */
-        .scrollbar-hide::-webkit-scrollbar {
-            display: none;
-        }
-        .scrollbar-hide {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
+        /* รองรับมือถือจอเล็ก */
+        @media (max-width: 480px) {
+            .input-size-part1 { width: 40px; margin: 0 1px; }
+            .input-size-part2 { width: 90px; margin: 0 1px; }
         }
     </style>
 </head>
@@ -478,8 +484,14 @@
         const InlineQuestionRenderer = ({ questionText, delimiter, questionId, userAnswers, onAnswer, showFurigana, fontSizeClass, isDisabled }) => {
             const parts = questionText.split(delimiter);
             
+            // ตรวจสอบว่าเป็น Part 1 หรือไม่ เพื่อเลือกขนาดช่อง
+            let sizeClass = "input-size-part2"; // ค่าเริ่มต้น (ช่องใหญ่ สำหรับ Part 2)
+            if (questionId && questionId.startsWith("part1")) {
+                sizeClass = "input-size-part1"; // ช่องเล็ก (สำหรับ Part 1)
+            }
+
             return (
-                <div className={`leading-loose ${fontSizeClass} text-gray-800 font-medium`}>
+                <div className={`leading-loose ${fontSizeClass} text-gray-800 font-medium break-words whitespace-normal`}>
                     {parts.map((part, index) => (
                         <React.Fragment key={index}>
                             <RubifiedText text={part} showFurigana={showFurigana} />
@@ -489,8 +501,8 @@
                                     disabled={isDisabled}
                                     value={userAnswers[`${questionId}-slot-${index}`] || ''}
                                     onChange={(e) => onAnswer(index, e.target.value)}
-                                    className="inline-input"
-                                    style={{ fontSize: '0.8em' }}
+                                    className={`inline-input ${sizeClass}`}
+                                    style={{ fontSize: '0.9em' }}
                                     autoComplete="off"
                                 />
                             )}
@@ -927,6 +939,7 @@
     </script>
 </body>
 </html>
+
 
 
 
