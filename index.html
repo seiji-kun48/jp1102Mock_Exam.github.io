@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JPN1102 Exam Simulator (Inline Input Edition)</title>
+    <title>JPN1102 Exam Simulator (Final Updated)</title>
     
     <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -22,7 +22,7 @@
 
     <style>
         body { font-family: 'Noto Sans Thai', sans-serif; }
-        .jp-text { font-family: 'Noto Sans JP', sans-serif; line-height: 2; }
+        .jp-text { font-family: 'Noto Sans JP', sans-serif; line-height: 2.2; }
         
         /* Ruby Styling */
         ruby { font-family: 'Noto Sans JP', sans-serif; ruby-align: center; }
@@ -36,20 +36,24 @@
         .inline-input {
             display: inline-block;
             border-bottom: 2px solid #6366f1;
-            background: #f3f4f6;
+            background: #f9fafb;
             text-align: center;
-            padding: 0 0.5rem;
+            padding: 0 0.25rem;
             margin: 0 0.25rem;
             border-radius: 0.25rem 0.25rem 0 0;
             outline: none;
             transition: all 0.2s;
             font-family: 'Noto Sans JP', sans-serif;
-            min-width: 60px;
+            min-width: 80px;
+            color: #4338ca;
+            font-weight: bold;
         }
         .inline-input:focus {
             background: #e0e7ff;
             border-color: #4338ca;
         }
+        /* Sticky Header Z-Index Fix */
+        header { z-index: 50; }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800">
@@ -60,20 +64,23 @@
 
         // --- CONFIGURATION ---
         const EXAM_CONFIG = {
-            duration: 120 * 60, 
+            duration: 120 * 60, // 2 ชั่วโมง
+            // จำนวนข้อที่จะสุ่มมาทำในแต่ละรอบ (ต้องไม่เกินจำนวนที่มีใน Pool)
             counts: {
                 part1: 15, part2: 5, part3: 7, part4: 5, 
-                part5: 12, part6: 15, part7: 12
+                part5: 10, part6: 10, part7: 10
             }
         };
 
+        // --- QUESTION POOL (Updated with content from PDFs) ---
         const QUESTION_POOL = {
             part1: {
                 title: "Part 1: เติมคำช่วย (Joshi)",
                 instruction: "จงเติมคำช่วยที่ถูกต้องลงในช่องว่างในประโยค",
-                type: "fill-in-inline", // Changed to inline
-                delimiter: /（　）/,   // Split by Japanese parenthesis gap
+                type: "fill-in-inline", 
+                delimiter: /（　）/,   
                 questions: [
+                    // From Ch 13-25 & Mock Exam
                     { q: "あれ（　）佐藤{さとう}さん（　）くれたワインです。", a: "あれ（は）佐藤さん（が）くれたワインです。" },
                     { q: "時間{じかん}（　）あったら、京都{きょうと}（　）旅行{りょこう}したいです。", a: "時間（が）あったら、京都（へ/に）旅行したいです。" },
                     { q: "父{ちち}は私{わたし}（　）時計{とけい}（　）買{か}ってくれました。", a: "父は私（に）時計（を）買ってくれました。" },
@@ -93,14 +100,22 @@
                     { q: "明日{あした}（　）雨{あめ}（　）降{ふ}るかもしれません。", a: "明日（は）雨（が）降るかもしれません。" },
                     { q: "駅{えき}まで君{きみ}（　）迎{むか}え（　）行{い}ってあげます。", a: "駅まで君（を）迎え（に）行ってあげます。" },
                     { q: "この漢字{かんじ}（　）読{よ}み方{かた}（　）教{おし}えてください。", a: "この漢字（の）読み方（を）教えてください。" },
-                    { q: "黒{くろ}いシャツ（　）着{き}ている人{ひと}（　）誰{だれ}ですか。", a: "黒いシャツ（を）着ている人（は）誰ですか。" }
+                    { q: "黒{くろ}いシャツ（　）着{き}ている人{ひと}（　）誰{だれ}ですか。", a: "黒いシャツ（を）着ている人（は）誰ですか。" },
+                    // New from PDFs
+                    { q: "公園{こうえん}（　）散歩{さんぽ}します。", a: "公園（を）散歩します。" },
+                    { q: "道{みち}（　）渡{わた}ります。", a: "道（を）渡ります。" },
+                    { q: "交差点{こうさてん}（　）右{みぎ}へ曲{ま}がります。", a: "交差点（を）右へ曲がります。" },
+                    { q: "坂{さか}（　）上{のぼ}ります。", a: "坂（を）上ります。" },
+                    { q: "この橋{はし}（　）渡{わた}ってはいけません。", a: "この橋（を）渡ってはいけません。" },
+                    { q: "あれ（　）友達{ともだち}（　）撮{と}った写真{しゃしん}です。", a: "あれ（は）友達（が）撮った写真です。" },
+                    { q: "元気{げんき}（　）とき、毎日{まいにち}、お酒（　）ワインを飲まない（　） 思{おも}います。", a: "元気（な）とき、毎日、お酒（や）ワインを飲まない（と） 思います。" }
                 ]
             },
             part2: {
                 title: "Part 2: ผันรูปคำกริยา/คำศัพท์",
                 instruction: "เปลี่ยนคำในวงเล็บให้อยู่ในรูปที่ถูกต้อง",
                 type: "fill-in-inline",
-                delimiter: /_______/, // Split by underscores
+                delimiter: /_______/, 
                 questions: [
                     { q: "（行{い}きます → _______ ）とき、「行{い}ってまいります」と言{い}います。", a: "出かける (Dict form) / 行く" },
                     { q: "あそこで（歌{うた}っています → _______ ）人{ひと}は誰{だれ}ですか。", a: "歌っている" },
@@ -111,7 +126,13 @@
                     { q: "（暑{あつ}いです → _______ ）し、喉{のど}も乾{かわ}きました。", a: "暑い" },
                     { q: "窓{まど}が（割{わ}ります → _______ ）います。", a: "割れて" },
                     { q: "（飲{の}みます → _______ ）すぎました。", a: "飲み" },
-                    { q: "（聞{き}きます → _______ ）とおりに、書{か}いてください。", a: "聞いた" }
+                    { q: "（聞{き}きます → _______ ）とおりに、書{か}いてください。", a: "聞いた" },
+                    // New from PDFs
+                    { q: "おいしいですから、（食{た}べます → _______ ）。", a: "食べてください" },
+                    { q: "これはミラーさんが（作{つく}ります → _______ ）料理{りょうり}です。", a: "作った" },
+                    { q: "もし 1億円（あります → _______ ）、世界旅行をしたいです。", a: "あったら" },
+                    { q: "約束の時間に友達が（来ません → _______ ）、どうしますか。", a: "来なかったら" },
+                    { q: "いくら（安いです → _______ ）、グループ旅行は嫌いです。", a: "安くても" }
                 ]
             },
             part3: {
@@ -128,7 +149,11 @@
                     { q: "会議{かいぎ}の前{まえ}に、何{なに}をしておかなければなりませんか。", a: "資料をコピーしておかなければなりません。" },
                     { q: "どうして昨日{きのう}学校{がっこう}を休{やす}みましたか。", a: "熱があったんです。" },
                     { q: "もう昼{ひる}ご飯{はん}を食{た}べましたか。", a: "いいえ、まだ食べていません。" },
-                    { q: "週末{しゅうまつ}、天気{てんき}がよかったら、どこへ行{い}きたいですか。", a: "海へ行きたいです。" }
+                    { q: "週末{しゅうまつ}、天気{てんき}がよかったら、どこへ行{い}きたいですか。", a: "海へ行きたいです。" },
+                    // New from PDFs
+                    { q: "どんなとき、お皿{さら}を洗{あら}わなければなりませんか。", a: "ご飯を食べたとき、お皿を洗わなければなりません。" },
+                    { q: "紅茶{こうちゃ}に砂糖{さとう}を入{い}れないと どうなりますか。", a: "おいしくなくなります。" },
+                    { q: "今{いま}、彼{かれ}が食{た}べる料理{りょうり}はどれですか。", a: "あなたが作る料理です。" }
                 ]
             },
             part4: {
@@ -143,7 +168,12 @@
                     { q: "昨日{きのう}習{なら}った言葉{ことば}を忘{わす}れました。", a: "Main: 言葉を忘れました。 / Sub: 昨日習った。" },
                     { q: "彼{かれ}が来{こ}ない理由{りゆう}を知{し}っていますか。", a: "Main: 理由を知っていますか。 / Sub: 彼が来ない。" },
                     { q: "母{はは}が作{つく}った料理{りょうり}はおいしいです。", a: "Main: 料理はおいしいです。 / Sub: 母が作った。" },
-                    { q: "帽子{ぼうし}をかぶっている人{ひと}は田中{たなか}さんです。", a: "Main: 人は田中さんです。 / Sub: 帽子をかぶっている。" }
+                    { q: "帽子{ぼうし}をかぶっている人{ひと}は田中{たなか}さんです。", a: "Main: 人は田中さんです。 / Sub: 帽子をかぶっている。" },
+                    // New from PDFs
+                    { q: "これはシャオ先生{せんせい}が書{か}いた絵{え}です。", a: "Main: これは絵です。 / Sub: シャオ先生が書いた。" },
+                    { q: "今日{きょう}、本{ほん}を返{かえ}します。", a: "Main: 本を返します。 / Sub: なし" },
+                    { q: "妻{つま}が病気{びょうき}のとき、会社{かいしゃ}を休{やす}みます。", a: "Main: 会社を休みます。 / Sub: 妻が病気の(とき)。" },
+                    { q: "友達{ともだち}が約束{やくそく}の時間{じかん}に来{こ}なかったら、どうしますか。", a: "Main: どうしますか。 / Sub: 友達が約束の時間に来なかったら。" }
                 ]
             },
             part5: {
@@ -160,7 +190,10 @@
                     { q: "この本{ほん}は読{よ}みやすいです。", a: "この本は読みやすいです。（Correct）" },
                     { q: "窓{まど}を開{あ}けています。", a: "窓が開いています。（State） / 窓を開けてあります。" },
                     { q: "財布{さいふ}を落{お}としてしまいました。", a: "財布を落としてしまいました。（Correct）" },
-                    { q: "試験{しけん}に合格{ごうかく}するように、勉強{べんきょう}しています。", a: "試験に合格するように、勉強しています。（Correct）" }
+                    { q: "試験{しけん}に合格{ごうかく}するように、勉強{べんきょう}しています。", a: "試験に合格するように、勉強しています。（Correct）" },
+                    // New
+                    { q: "彼{かれ}は本{ほん}をもらいました。山田{やまだ}さんが送{おく}ってあげましたか。", a: "山田さんが送ってくれましたか。" },
+                    { q: "サントスさんは誰{だれ}にペンを貸{か}してあげましたか。", a: "ถูกต้องแล้ว (Correct)" }
                 ]
             },
             part6: {
@@ -180,7 +213,11 @@
                     { q: "ช่วยปิดประตูหน่อยได้ไหม", a: "ドアを閉めてくれませんか／いただけませんか。" },
                     { q: "ถ้ากดปุ่มนี้ เงินทอนจะออกมา", a: "このボタンを押すと、お釣りが出ます。" },
                     { q: "ดูเหมือนฝนจะตก", a: "雨が降りそうです。" },
-                    { q: "ได้ยินว่าพรุ่งนี้อากาศจะเย็น", a: "明日は涼しくなるそうです。" }
+                    { q: "ได้ยินว่าพรุ่งนี้อากาศจะเย็น", a: "明日は涼しくなるそうです。" },
+                    // New from PDFs
+                    { q: "เวลาภรรยาไม่สบาย(ฉนั/ผม) จะลางาน", a: "妻が病気のとき、会社を休みます。" },
+                    { q: "ถึงแมเ้พื่อนไม่มาช่วยก็จะท าอาหารดว้ยตวัเอง", a: "友達が手伝ってくれなくても、自分で料理を作ります。" },
+                    { q: "ถา้เพื่อนชวน จะท าอยา่งไร", a: "友達が誘ったら、どうしますか。" }
                 ]
             },
             part7: {
@@ -213,7 +250,8 @@
             Eye: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
             Lock: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>,
             Unlock: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>,
-            Settings: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            Settings: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
+            Home: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         };
 
         const RubifiedText = ({ text, showFurigana }) => {
@@ -283,8 +321,8 @@
                                     disabled={isDisabled}
                                     value={userAnswers[`${questionId}-slot-${index}`] || ''}
                                     onChange={(e) => onAnswer(index, e.target.value)}
-                                    className="inline-input text-indigo-700"
-                                    style={{ fontSize: '0.9em' }}
+                                    className="inline-input"
+                                    style={{ fontSize: '0.8em' }}
                                     autoComplete="off"
                                 />
                             )}
@@ -294,7 +332,7 @@
             );
         };
 
-        const ExamInterface = ({ mode, examData, onFinish }) => {
+        const ExamInterface = ({ mode, examData, onFinish, onHome }) => {
             const [activePart, setActivePart] = useState('part1');
             const [userAnswers, setUserAnswers] = useState({});
             const [timeLeft, setTimeLeft] = useState(EXAM_CONFIG.duration);
@@ -322,12 +360,21 @@
 
             return (
                 <div className={`min-h-screen pb-20 ${isExamMode ? 'no-select' : ''}`}>
-                    <header className={`${isExamMode ? 'bg-red-900' : 'bg-indigo-700'} text-white p-3 sticky top-0 z-50 shadow-md transition-colors`}>
+                    <header className={`${isExamMode ? 'bg-red-900' : 'bg-indigo-700'} text-white p-3 sticky top-0 shadow-md transition-colors`}>
                         <div className="max-w-6xl mx-auto flex justify-between items-center relative">
-                            <h1 className="font-bold text-lg flex items-center gap-2">
-                                {isExamMode ? <Icons.Lock /> : <Icons.Book />}
-                                <span className="hidden sm:inline font-medium">{isExamMode ? 'การสอบปลายภาค (จำลอง)' : 'โหมดฝึกฝน'}</span>
-                            </h1>
+                            <div className="flex items-center gap-3">
+                                <button 
+                                    onClick={onHome}
+                                    className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors text-white"
+                                    title="หน้าหลัก"
+                                >
+                                    <Icons.Home />
+                                </button>
+                                <h1 className="font-bold text-lg flex items-center gap-2">
+                                    {isExamMode ? <Icons.Lock /> : <Icons.Book />}
+                                    <span className="hidden sm:inline font-medium">{isExamMode ? 'การสอบปลายภาค (จำลอง)' : 'โหมดฝึกฝน'}</span>
+                                </h1>
+                            </div>
                             
                             {isExamMode && (
                                 <div className={`flex items-center gap-2 font-mono text-xl font-bold px-4 py-1 rounded-lg ${timeLeft < 300 ? 'bg-red-600 animate-pulse' : 'bg-black/30'}`}>
@@ -563,19 +610,30 @@
 
             const startExam = (selectedMode) => {
                 let data = {};
-                if (selectedMode === 'practice_all') {
-                    data = QUESTION_POOL;
-                } else {
-                    Object.keys(QUESTION_POOL).forEach(key => {
-                        const pool = QUESTION_POOL[key];
-                        const count = EXAM_CONFIG.counts[key] || 5;
-                        data[key] = { ...pool, questions: getRandomQuestions(pool.questions, count) };
-                    });
+                try {
+                    if (selectedMode === 'practice_all') {
+                        data = QUESTION_POOL;
+                    } else {
+                        // Randomize for Exam or Random Practice
+                        Object.keys(QUESTION_POOL).forEach(key => {
+                            const pool = QUESTION_POOL[key];
+                            const count = EXAM_CONFIG.counts[key] || 5;
+                            // Ensure we don't request more than available
+                            const safeCount = Math.min(count, pool.questions.length);
+                            data[key] = {
+                                ...pool,
+                                questions: getRandomQuestions(pool.questions, safeCount)
+                            };
+                        });
+                    }
+                    setCurrentExamData(data);
+                    setMode(selectedMode);
+                    setGameState('exam');
+                    window.scrollTo(0, 0);
+                } catch (error) {
+                    console.error("Error starting exam:", error);
+                    alert("เกิดข้อผิดพลาดในการเริ่มข้อสอบ กรุณาลองใหม่อีกครั้ง");
                 }
-                setCurrentExamData(data);
-                setMode(selectedMode);
-                setGameState('exam');
-                window.scrollTo(0, 0);
             };
 
             const finishExam = (answers, isTimeOut) => {
@@ -586,7 +644,7 @@
             };
 
             if (gameState === 'menu') return <MenuScreen onStart={startExam} />;
-            if (gameState === 'exam') return <ExamInterface mode={mode} examData={currentExamData} onFinish={finishExam} />;
+            if (gameState === 'exam') return <ExamInterface mode={mode} examData={currentExamData} onFinish={finishExam} onHome={() => setGameState('menu')} />;
             if (gameState === 'result') return <ResultSummary examData={currentExamData} userAnswers={finalAnswers} onRestart={() => setGameState('menu')} />;
             return null;
         };
