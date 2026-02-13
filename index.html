@@ -27,6 +27,31 @@
         .hide-furigana ruby { ruby-position: unset; }
 
         .no-select { user-select: none; }
+
+        /* แก้ไข Sticky Header ให้ซ้อนทับเนื้อหาอย่างถูกต้อง */
+        header { 
+            z-index: 100 !important; /* ดันให้อยู่เลเยอร์สูงสุด */
+            position: sticky;
+            top: 0;
+            background-color: rgba(49, 46, 129, 1); /* บังคับสีทึบ (สำหรับโหมดฝึกฝน) */
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+
+        /* กรณีเป็นโหมดสอบจริง (สีแดง) ให้ทึบเหมือนกัน */
+        .bg-red-900 {
+            background-color: rgba(127, 29, 29, 1) !important;
+        }
+        
+        /* กรณีเป็นโหมดฝึกฝน (สีคราม) ให้ทึบเหมือนกัน */
+        .bg-indigo-700 {
+            background-color: rgba(67, 56, 202, 1) !important;
+        }
+
+        /* ป้องกันช่อง Input ลอยทับแถบเมนู */
+        .inline-input {
+            z-index: 1; /* ให้ช่องกรอกอยู่เลเยอร์ต่ำกว่า Header */
+            position: relative;
+        }
         
         /* Inline Input Styling */
         .inline-input {
@@ -939,6 +964,7 @@
     </script>
 </body>
 </html>
+
 
 
 
