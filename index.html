@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>แบบฝึกหัดภาษาญี่ปุ่น Minna 13-25</title>
+    <title>JPN1102 Exam Simulator (Furigana Edition)</title>
     
     <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -15,438 +15,700 @@
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Google Fonts: Noto Sans Thai & Noto Sans JP -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Noto+Sans+Thai:wght@300;400;500;700&display=swap" rel="stylesheet">
 
     <style>
-        body { font-family: 'Sarabun', sans-serif; }
+        body { font-family: 'Noto Sans Thai', sans-serif; }
+        .jp-text { font-family: 'Noto Sans JP', sans-serif; line-height: 1.8; }
+        
+        /* Ruby (Furigana) Styling */
+        ruby { font-family: 'Noto Sans JP', sans-serif; ruby-align: center; }
+        rt { font-size: 0.6em; color: #6b7280; font-weight: normal; }
+        
+        /* Hide Furigana Class */
+        .hide-furigana rt { display: none; }
+        .hide-furigana ruby { ruby-position: unset; }
+
+        /* Prevent Selection in Exam Mode */
+        .no-select {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+        
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #c7c7c7; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
     </style>
 </head>
-<body class="bg-gray-50">
+<body class="bg-gray-100 text-gray-800">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useCallback, useRef } = React;
 
-        // Icons Components (Inline SVGs to avoid dependency issues)
-        const Icons = {
-            Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>,
-            Eye: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>,
-            EyeOff: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>,
-            BookOpen: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>,
-            Menu: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>,
-            X: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>,
-            ArrowUp: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+        // --- CONFIGURATION ---
+        const EXAM_CONFIG = {
+            duration: 120 * 60, // 2 ชั่วโมง
+            counts: {
+                part1: 15, part2: 5, part3: 7, part4: 5, 
+                part5: 12, part6: 15, part7: 12
+            }
         };
 
-        const JapaneseExam = () => {
-            const [activePart, setActivePart] = useState('part1');
-            const [showMenu, setShowMenu] = useState(false);
-
-            const examData = {
-                part1: {
-                title: "Part 1: จงเติมคำช่วยให้ถูกต้อง",
-                instruction: "เติมคำช่วยลงในช่องว่าง (45 คะแนน)",
+        // --- Question Pool (With Furigana Syntax: Kanji{reading}) ---
+        const QUESTION_POOL = {
+            part1: {
+                title: "Part 1: เติมคำช่วย (Joshi)",
+                instruction: "จงเติมคำช่วยที่ถูกต้องลงในช่องว่าง",
                 type: "fill-in",
                 questions: [
-                    { q: "あれ（　）佐藤さん（　）くれたワインです。", a: "あれ（は）佐藤さん（が）くれたワインです。" },
-                    { q: "時間（　）あったら、京都（　）旅行したいです。", a: "時間（が）あったら、京都（へ/に）旅行したいです。" },
-                    { q: "父は私（　）時計（　）買ってくれました。", a: "父は私（に）時計（を）買ってくれました。" },
-                    { q: "私（　）山田さん（　）傘（　）貸してあげました。", a: "私（は）山田さん（に）傘（を）貸してあげました。" },
-                    { q: "日曜日（　）暇（　）とき、掃除（　）洗濯をします。", a: "日曜日（の）暇（な）とき、掃除（や）洗濯をします。" },
-                    { q: "図書館（　）借りた本（　）なくしました。", a: "図書館（で）借りた本（を）なくしました。" },
-                    { q: "信号（　）右（　）曲がる（　）、郵便局があります。", a: "信号（を）右（へ/に）曲がる（と）、郵便局があります。" },
-                    { q: "このボタン（　）押す（　）、お釣りが出ます。", a: "このボタン（を）押す（と）、お釣りが出ます。" },
-                    { q: "彼（　）日本語（　）話すこと（　）できます。", a: "彼（は）日本語（を）話すこと（が）できます。" },
-                    { q: "明日、パーティー（　）行く（　）思います。", a: "明日、パーティー（へ）行く（と）思います。" },
-                    { q: "ミラーさん（　）明日、来る（　）言いました。", a: "ミラーさん（は）明日、来る（と）言いました。" },
-                    { q: "私（　）友達（　）引越し（　）手伝ってもらいました。", a: "私（は）友達（に）引越し（を）手伝ってもらいました。" },
-                    { q: "誰（　）手伝ってくれなくて（　）、一人（　）やります。", a: "誰（も）手伝ってくれなくて（も）、一人（で）やります。" },
-                    { q: "日本（　）物価（　）高い（　）思います。", a: "日本（の）物価（は）高い（と）思います。" },
-                    { q: "橋（　）渡って、公園（　）散歩します。", a: "橋（を）渡って、公園（を）散歩します。" },
-                    { q: "図書館（　）行くとき、地図（　）持って行きます。", a: "図書館（へ）行くとき、地図（を）持って行きます。" },
-                    { q: "雨（　）降って（　）、サッカー（　）します。", a: "雨（が）降って（も）、サッカー（を）します。" },
-                    { q: "お金（　）足りなかったら、銀行（　）下ろします。", a: "お金（が）足りなかったら、銀行（で/から）下ろします。" },
-                    { q: "首相（　）来月、アメリカ（　）行く（　）ニュースで言っていました。", a: "首相（は）来月、アメリカ（へ）行く（と）ニュースで言っていました。" },
-                    { q: "私（　）彼（　）空港（　）送ってあげました。", a: "私（は）彼（を）空港（まで/へ）送ってあげました。" }
+                    { q: "あれ（　）佐藤{さとう}さん（　）くれたワインです。", a: "あれ（は）佐藤さん（が）くれたワインです。" },
+                    { q: "時間{じかん}（　）あったら、京都{きょうと}（　）旅行{りょこう}したいです。", a: "時間（が）あったら、京都（へ/に）旅行したいです。" },
+                    { q: "父{ちち}は私{わたし}（　）時計{とけい}（　）買{か}ってくれました。", a: "父は私（に）時計（を）買ってくれました。" },
+                    { q: "私{わたし}（　）家族{かぞく}（　）日本{にほん}へ行{い}きたいです。", a: "私（は）家族（と）日本へ行きたいです。" },
+                    { q: "ここ（　）タバコ（　）吸{す}ってはいけません。", a: "ここ（で）タバコ（を）吸ってはいけません。" },
+                    { q: "先生{せんせい}（　）聞{き}きました（　）、テストは明日{あした}だそうです。", a: "先生（に）聞きました（が）、テストは明日だそうです。" },
+                    { q: "京都駅{きょうとえき}（　）電車{でんしゃ}（　）乗{の}ります。", a: "京都駅（で）電車（に）乗ります。" },
+                    { q: "電車{でんしゃ}（　）降{お}りて、バス（　）乗{の}り換{か}えます。", a: "電車（を）降りて、バス（に）乗り換えます。" },
+                    { q: "友達{ともだち}（　）約束{やくそく}（　）ありますから、帰{かえ}ります。", a: "友達（と）約束（が）ありますから、帰ります。" },
+                    { q: "この図{ず}（　）とおりに、折{お}って（　）ください。", a: "この図（の）とおりに、折って（ください）。" },
+                    { q: "砂糖{さとう}（　）入{い}れない（　）、おいしくないです。", a: "砂糖（を）入れない（と）、おいしくないです。" },
+                    { q: "雨{あめ}（　）降{ふ}っても、洗濯{せんたく}（　）します。", a: "雨（が）降っても、洗濯（を）します。" },
+                    { q: "部長{ぶちょう}（　）資料{しりょう}（　）送{おく}っておきました。", a: "部長（に）資料（を）送っておきました。" },
+                    { q: "壁{かべ}（　）カレンダー（　）掛{か}けてあります。", a: "壁（に）カレンダー（が）掛けてあります。" },
+                    { q: "遅刻{ちこく}した理由{りゆう}（　）先生{せんせい}（　）説明{せつめい}しました。", a: "遅刻した理由（を）先生（に）説明しました。" },
+                    { q: "週末{しゅうまつ}（　）海{うみ}（　）行{い}こうと思{おも}っています。", a: "週末（は/に）海（へ/に）行こうと思っています。" },
+                    { q: "明日{あした}（　）雨{あめ}（　）降{ふ}るかもしれません。", a: "明日（は）雨（が）降るかもしれません。" },
+                    { q: "駅{えき}まで君{きみ}（　）迎{むか}え（　）行{い}ってあげます。", a: "駅まで君（を）迎え（に）行ってあげます。" },
+                    { q: "この漢字{かんじ}（　）読{よ}み方{かた}（　）教{おし}えてください。", a: "この漢字（の）読み方（を）教えてください。" },
+                    { q: "黒{くろ}いシャツ（　）着{き}ている人{ひと}（　）誰{だれ}ですか。", a: "黒いシャツ（を）着ている人（は）誰ですか。" }
                 ]
-                },
-                part2: {
-                title: "Part 2: จงผันรูปให้เหมาะสม",
-                instruction: "เปลี่ยนคำในวงเล็บให้อยู่ในรูปที่ถูกต้อง (15 คะแนน)",
+            },
+            part2: {
+                title: "Part 2: ผันรูปคำกริยา/คำศัพท์",
+                instruction: "เปลี่ยนคำในวงเล็บให้อยู่ในรูปที่ถูกต้อง",
                 type: "fill-in",
                 questions: [
-                    { q: "（行きます → _______ ）とき、「行ってまいります」と言います。", a: "出かける (Dict form) / 行く" },
-                    { q: "あそこで（歌っています → _______ ）人は誰ですか。", a: "歌っている" },
-                    { q: "これは母が（作りました → _______ ）ケーキです。", a: "作った" },
-                    { q: "私は父に本を（読みます → _______ ）もらいました。", a: "読んで" },
-                    { q: "もし 1億円（あります → _______ ）、世界旅行をしたいです。", a: "あったら" },
-                    { q: "約束の時間に友達が（来ません → _______ ）、どうしますか。", a: "来なかったら" },
-                    { q: "いくら（安いです → _______ ）、グループ旅行は嫌いです。", a: "安くても" },
-                    { q: "日曜日、（暇です → _______ ）、遊びに来てください。", a: "暇だったら" },
-                    { q: "使い方が（分かりません → _______ ）とき、私に聞いてください。", a: "分からない" },
-                    { q: "図書館で（借ります → _______ ）本はこれです。", a: "借りる" },
-                    { q: "私はミラーさんに漢字を（教えます → _______ ）あげました。", a: "教えて" },
-                    { q: "太郎君は私に地図を（書きます → _______ ）くれました。", a: "書いて" },
-                    { q: "エアコンを（つけます → _______ ）と、涼しくなります。", a: "つける" },
-                    { q: "（眠いです → _______ ）ら、寝てもいいですよ。", a: "眠かった" },
-                    { q: "明日、雨が（降ります → _______ ）と思います。", a: "降る" }
+                    { q: "（行{い}きます → _______ ）とき、「行{い}ってまいります」と言{い}います。", a: "出かける (Dict form) / 行く" },
+                    { q: "あそこで（歌{うた}っています → _______ ）人{ひと}は誰{だれ}ですか。", a: "歌っている" },
+                    { q: "これは母{はは}が（作{つく}りました → _______ ）ケーキです。", a: "作った" },
+                    { q: "もっと（勉強{べんきょう}します → _______ ）ほうがいいですよ。", a: "勉強した" },
+                    { q: "明日{あした}は（雪{ゆき}です → _______ ）かもしれません。", a: "雪" },
+                    { q: "この本{ほん}は（読{よ}みます → _______ ）やすいです。", a: "読み" },
+                    { q: "（暑{あつ}いです → _______ ）し、喉{のど}も乾{かわ}きました。", a: "暑い" },
+                    { q: "窓{まど}が（割{わ}ります → _______ ）います。", a: "割れて" },
+                    { q: "（飲{の}みます → _______ ）すぎました。", a: "飲み" },
+                    { q: "（聞{き}きます → _______ ）とおりに、書{か}いてください。", a: "聞いた" }
                 ]
-                },
-                part3: {
-                title: "Part 3: จงตอบคำถามให้เหมาะสม",
-                instruction: "ตอบคำถามให้ถูกต้องตามหลักไวยากรณ์และบริบท (42 คะแนน)",
+            },
+            part3: {
+                title: "Part 3: ตอบคำถาม (Q&A)",
+                instruction: "ตอบคำถามให้สมบูรณ์",
                 type: "fill-in",
                 questions: [
-                    { q: "誰に日本語を教えてもらいましたか。", a: "日本人の先生に教えてもらいました。" },
-                    { q: "財布を落としたとき、どうしますか。", a: "交番へ行きます。" },
-                    { q: "暇なとき、いつも何をしますか。", a: "テレビを見たり、本を読んだりします。" },
-                    { q: "この道をまっすぐ行くと、何がありますか。", a: "右に銀行があります。" },
-                    { q: "明日、雨が降ったら、出かけますか。", a: "いいえ、出かけません。" },
-                    { q: "日本の物価についてどう思いますか。", a: "高いと思います。" },
-                    { q: "誰があなたの荷物を持ってくれましたか。", a: "ミラーさんが持ってくれました。" },
-                    { q: "お金がたくさんあったら、何をしたいですか。", a: "新しいうちを買いたいです。" },
-                    { q: "日曜日でも、働かなければなりませんか。", a: "はい、働かなければなりません。" },
-                    { q: "眠い時、どうしますか。", a: "コーヒーを飲みます。" },
-                    { q: "首相（นายกฯ）は来月、何をすると言いましたか。", a: "アメリカへ行くと言いました。" },
-                    { q: "ミラーさんは来ないと思いますか。", a: "いいえ、きっと来ると思います。" },
-                    { q: "その傘は誰のですか。", a: "佐藤さんに借りた傘です。" },
-                    { q: "誰に本を貸してあげましたか。", a: "グプタさんに貸してあげました。" },
-                    { q: "漢字の読み方が分からないとき、どうしますか。", a: "先生に聞きます。／辞書で調べます。" },
-                    { q: "エアコンの調節（ปรับ）はどうやりますか。", a: "このボタンを押すと、温度が変わります。" },
-                    { q: "転勤（ย้ายงาน）したいですか。", a: "いいえ、給料が高くても、転勤したくありません。" },
-                    { q: "あの人は誰ですか。", a: "眼鏡をかけている人です。" },
-                    { q: "誕生日に母に何をしてあげますか。", a: "料理を作ってあげます。" },
-                    { q: "パスポートをなくしたことがありますか。", a: "いいえ、なくしたことがありません。" },
-                    { q: "明日、暇だったら、何をしますか。", a: "映画を見に行きます。" }
+                    { q: "誰{だれ}に日本語{にほんご}を教{おし}えてもらいましたか。", a: "日本人の先生に教えてもらいました。" },
+                    { q: "財布{さいふ}を落{お}としたとき、どうしますか。", a: "交番へ行きます。" },
+                    { q: "日本{にほん}へ行{い}ったことがありますか。", a: "はい、行ったことがあります。 / いいえ、行ったことがありません。" },
+                    { q: "日曜日{にちようび}は何{なに}をしたり、何{なに}をしたりしますか。", a: "テニスをしたり、映画を見たりします。" },
+                    { q: "将来{しょうらい}、何{なん}になりたいですか。", a: "医者になりたいです。" },
+                    { q: "今{いま}の首相{しゅしょう}についてどう思{おも}いますか。", a: "いい人だと思います。 / よく働くと思います。" },
+                    { q: "会議{かいぎ}の前{まえ}に、何{なに}をしておかなければなりませんか。", a: "資料をコピーしておかなければなりません。" },
+                    { q: "どうして昨日{きのう}学校{がっこう}を休{やす}みましたか。", a: "熱があったんです。" },
+                    { q: "もう昼{ひる}ご飯{はん}を食{た}べましたか。", a: "いいえ、まだ食べていません。" },
+                    { q: "週末{しゅうまつ}、天気{てんき}がよかったら、どこへ行{い}きたいですか。", a: "海へ行きたいです。" }
                 ]
-                },
-                part4: {
-                title: "Part 4: แยกประโยคหลัก/ย่อย",
-                instruction: "ระบุประโยคหลัก (Main) และส่วนขยาย (Sub/Modifier) (30 คะแนน)",
+            },
+            part4: {
+                title: "Part 4: แยกประโยค",
+                instruction: "ระบุประโยคหลัก (Main) และส่วนขยาย (Modifier)",
                 type: "fill-in",
                 questions: [
-                    { q: "私は 朝ごはんを食べる 時間がありません。", a: "Main: 私は時間がありません。 / Sub: 朝ごはんを食べる。" },
-                    { q: "京都へ行く人は ミラーさんです。", a: "Main: 人はミラーさんです。 / Sub: 京都へ行く。" },
-                    { q: "昨日 買った 辞書は どこですか。", a: "Main: 辞書はどこですか。 / Sub: 昨日買った。" },
-                    { q: "カリナさんが かいた 絵が 好きです。", a: "Main: 絵が好きです。 / Sub: カリナさんがかいた。" },
-                    { q: "彼が 生まれた 所を 知っていますか。", a: "Main: 所を知っていますか。 / Sub: 彼が生まれた。" },
-                    { q: "ミラーさんが 住んでいた うちは 古いです。", a: "Main: うちは古いです。 / Sub: ミラーさんが住んでいた。" },
-                    { q: "彼女が 着ている 服は 新しいです。", a: "Main: 服は新しいです。 / Sub: 彼女が着ている。" },
-                    { q: "友達と 映画を 見る 約束が あります。", a: "Main: 約束があります。 / Sub: 友達と映画を見る。" },
-                    { q: "市役所へ 行く 用事が あります。", a: "Main: 用事があります。 / Sub: 市役所へ行く。" },
-                    { q: "妻が 病気の とき、会社を 休みます。", a: "Main: 会社を休みます。 / Sub: 妻が病気の(とき)。" },
-                    { q: "友達が 来る 前に、部屋を 掃除します。", a: "Main: 部屋を掃除します。 / Sub: 友達が来る(まえに)。" },
-                    { q: "図書館で 借りた 本を 読みます。", a: "Main: 本を読みます。 / Sub: 図書館で借りた。" },
-                    { q: "私が 欲しい 車は ドイツの 車です。", a: "Main: 車はドイツの車です。 / Sub: 私が欲しい。" },
-                    { q: "日本語が 分からない 人は 英語で 話してください。", a: "Main: 人は英語で話してください。 / Sub: 日本語が分からない。" },
-                    { q: "私は 母に 料理を 作ってあげました。", a: "Giver: 私 (ฉัน) / Receiver: 母 (แม่)" }
+                    { q: "私{わたし}は 朝{あさ}ご飯{はん}を食{た}べる 時間{じかん}がありません。", a: "Main: 私は時間がありません。 / Sub: 朝ごはんを食べる。" },
+                    { q: "京都{きょうと}へ行{い}く人{ひと}は ミラーさんです。", a: "Main: 人はミラーさんです。 / Sub: 京都へ行く。" },
+                    { q: "私{わたし}が住{す}んでいるアパートは便利{べんり}です。", a: "Main: アパートは便利です。 / Sub: 私が住んでいる。" },
+                    { q: "父{ちち}が生{う}まれた所{ところ}は北海道{ほっかいどう}です。", a: "Main: 所は北海道です。 / Sub: 父が生まれた。" },
+                    { q: "昨日{きのう}習{なら}った言葉{ことば}を忘{わす}れました。", a: "Main: 言葉を忘れました。 / Sub: 昨日習った。" },
+                    { q: "彼{かれ}が来{こ}ない理由{りゆう}を知{し}っていますか。", a: "Main: 理由を知っていますか。 / Sub: 彼が来ない。" },
+                    { q: "母{はは}が作{つく}った料理{りょうり}はおいしいです。", a: "Main: 料理はおいしいです。 / Sub: 母が作った。" },
+                    { q: "帽子{ぼうし}をかぶっている人{ひと}は田中{たなか}さんです。", a: "Main: 人は田中さんです。 / Sub: 帽子をかぶっている。" }
                 ]
-                },
-                part5: {
-                title: "Part 5: แก้ไขประโยค",
-                instruction: "แก้ไขประโยคที่ผิดไวยากรณ์ให้ถูกต้อง (36 คะแนน)",
+            },
+            part5: {
+                title: "Part 5: แก้ไขประโยค (Error Correction)",
+                instruction: "แก้ไขประโยคที่ผิดไวยากรณ์ให้ถูกต้อง",
                 type: "fill-in",
                 questions: [
-                    { q: "雨が降ると、出かけません。", a: "雨が降ったら、出かけません。" },
-                    { q: "この本は山田さんが私に買ってあげました。", a: "山田さんは私にこの本を買ってくれました。" },
-                    { q: "時間があったら、映画を見に行きますか。", a: "時間があったら、映画を見に行きませんか。" },
-                    { q: "明日、天気がいいと、洗濯します。", a: "明日、天気がよかったら、洗濯します。" },
-                    { q: "安いで、おいしいです。", a: "安くて、おいしいです。" },
-                    { q: "私は花に水をくれました。", a: "あげました / やりました" },
-                    { q: "パスポートをなくすとき、どうしますか。", a: "パスポートをなくしたとき、どうしますか。" },
-                    { q: "約束の時間に友達が来ないたら、どうしますか。", a: "来なかったら" },
-                    { q: "明日、雨が降ると思います。（ปฏิเสธ）", a: "明日、雨が降らないと思います。" },
-                    { q: "彼は来ないと言いました。（อดีต）", a: "彼は「来ます」と言いました。/ 彼は来なかったと言いました。" },
-                    { q: "元気でも、薬を飲まなければなりません。（แก้ไขเงื่อนไข）", a: "元気だったら、薬を飲まなくてもいいです。" },
-                    { q: "いくら安かったら、買いません。", a: "いくら安くても、買いません。" },
-                    { q: "ミラーさんは親切だと思います。", a: "親切だと思います。（Na-adj + だ）" },
-                    { q: "日本へ行く前に、日本語を習いました。（แก้ให้ถูกถ้าโจทย์คือ 行った前に）", a: "日本へ行く前に" },
-                    { q: "右へ曲がったら、銀行があります。", a: "右へ曲がると（ธรรมชาติกว่า）" },
-                    { q: "私は佐藤さんに本を貸してくれました。", a: "私は佐藤さんに本を貸してあげました。" },
-                    { q: "部屋はきれいだったら、借りたいです。", a: "部屋がきれいだったら" },
-                    { q: "日曜日、テニスをして、映画を見ます。", a: "日曜日、テニスをしたり、映画を見たりします。" }
+                    { q: "雨{あめ}が降{ふ}ると、出{で}かけません。", a: "雨が降ったら、出かけません。" },
+                    { q: "安{やす}いで、おいしいです。", a: "安くて、おいしいです。" },
+                    { q: "私{わたし}は花{はな}に水{みず}をくれました。", a: "あげました / やりました" },
+                    { q: "日本{にほん}へ行{い}ったことがありません。", a: "日本へ行ったことがありません。（Correct） / 行った → 行く (Error if context implies never)" },
+                    { q: "明日{あした}、雨{あめ}が降{ふ}らないと思{おも}います。", a: "明日、雨が降らないと思います。（Correct）" },
+                    { q: "頭{あたま}が痛{いた}い、帰{かえ}ってもいいですか。", a: "頭が痛いので／痛いですから、帰ってもいいですか。" },
+                    { q: "この本{ほん}は読{よ}みやすいです。", a: "この本は読みやすいです。（Correct）" },
+                    { q: "窓{まど}を開{あ}けています。", a: "窓が開いています。（State） / 窓を開けてあります。" },
+                    { q: "財布{さいふ}を落{お}としてしまいました。", a: "財布を落としてしまいました。（Correct）" },
+                    { q: "試験{しけん}に合格{ごうかく}するように、勉強{べんきょう}しています。", a: "試験に合格するように、勉強しています。（Correct）" }
                 ]
-                },
-                part6: {
-                title: "Part 6: แปลประโยค",
-                instruction: "แปลประโยคต่อไปนี้ (45 คะแนน)",
+            },
+            part6: {
+                title: "Part 6: การแปล (Translation)",
+                instruction: "แปลประโยคต่อไปนี้เป็นภาษาญี่ปุ่น/ไทย",
                 type: "fill-in",
                 questions: [
                     { q: "พรุ่งนี้ ถ้าฝนตก จะไม่ออกไปข้างนอก", a: "明日、雨が降ったら、出かけません。" },
                     { q: "คุณมิลเลอร์พูดว่า \"พรุ่งนี้จะไปโตเกียว\"", a: "ミラーさんは「明日、東京へ行きます」と言いました。" },
-                    { q: "ถึงแม้ว่าจะง่วงนอน ก็ต้องทำการบ้าน", a: "眠くても、宿題をしなければなりません。" },
-                    { q: "(ฉัน)ได้รับนาฬิกาเรือนนี้มาจากพี่สาว", a: "（私は）姉にこの時計をもらいました。" },
-                    { q: "(ฉัน)ซื้อจักรยานให้ลูกชาย", a: "（私は）息子に自転車を買ってあげました。" },
-                    { q: "คุณแม่ส่งพัสดุ(ของ)มาให้(ฉัน)", a: "母は（私に）荷物を送ってくれました。" },
-                    { q: "คิดว่าราคาของที่ญี่ปุ่นแพง", a: "日本の物価は高いと思います。" },
-                    { q: "ตอนที่เป็นเด็ก เคยว่ายน้ำที่แม่น้ำ", a: "子供のとき、川で泳いだことがあります。" },
-                    { q: "ช่วยปิดหน้าต่างให้หน่อยได้ไหมครับ", a: "窓を閉めてくれませんか。／閉めてもらえませんか。" },
+                    { q: "กรุณาอย่าลืมร่ม", a: "傘を忘れないでください。" },
+                    { q: "เคยปีนภูเขาไฟฟูจิไหม", a: "富士山に登ったことがありますか。" },
+                    { q: "ช่วงนี้ยุ่ง ก็เลยไม่ได้ไปไหนเลย", a: "最近忙しいので／忙しいから、どこも行きませんでした。" },
+                    { q: "ฉันให้ดอกไม้แฟน (ผู้หญิง)", a: "私は彼女に花をあげました。" },
+                    { q: "ได้รับช็อกโกแลตจากใคร", a: "誰に／から チョコレートをもらいましたか。" },
+                    { q: "ก่อนนอน แปรงฟัน", a: "寝る前に、歯を磨きます。" },
+                    { q: "หลังจากกินข้าว จะดื่มกาแฟ", a: "ご飯を食べた後で、コーヒーを飲みます。" },
+                    { q: "ช่วยปิดประตูหน่อยได้ไหม", a: "ドアを閉めてくれませんか／いただけませんか。" },
                     { q: "ถ้ากดปุ่มนี้ เงินทอนจะออกมา", a: "このボタンを押すと、お釣りが出ます。" },
-                    { q: "คนที่ใส่แว่นตาอยู่คือคุณทานากะ", a: "眼鏡をかけている人は田中さんです。" },
-                    { q: "นี่คือรูปถ่ายที่ถ่ายที่วัดทอง (Kinkakuji)", a: "これは金閣寺で撮った写真です。" },
-                    { q: "明日、パーティーに行く？ (แปลไทย/ตอบรับ)", a: "พรุ่งนี้จะไปปาร์ตี้ไหม? / อืม ไป (うん、行く)" },
-                    { q: "時間がなかったら、テレビを見ません。 (แปลไทย)", a: "ถ้าไม่มีเวลา จะไม่ดูทีวี" },
-                    { q: "私は山田さんに図書館の電話番号を教えてもらいました。 (แปลไทย)", a: "ฉันให้คุณยามาดะบอกเบอร์โทรศัพท์ของห้องสมุดให้" }
+                    { q: "ดูเหมือนฝนจะตก", a: "雨が降りそうです。" },
+                    { q: "ได้ยินว่าพรุ่งนี้อากาศจะเย็น", a: "明日は涼しくなるそうです。" }
                 ]
-                },
-                part7: {
-                title: "Part 7: เลือกคำตอบที่ถูกต้อง",
-                instruction: "เลือกข้อที่ถูกต้องที่สุด (12 คะแนน)",
+            },
+            part7: {
+                title: "Part 7: ปรนัย (Multiple Choice)",
+                instruction: "เลือกข้อที่ถูกต้องที่สุด",
                 type: "multiple-choice",
                 questions: [
-                    { q: "（　）雨が降ったら、行きません。", options: ["もし", "いくら", "たぶん", "ぜひ"], a: 0 },
-                    { q: "彼は（　）来ると思います。（มั่นใจมาก）", options: ["たぶん", "きっと", "もし", "いくら"], a: 1 },
-                    { q: "（　）高くても、買います。", options: ["もし", "たぶん", "いくら", "ぜひ"], a: 2 },
-                    { q: "（　）来ないと思います。（อาจจะ/คาดคะเน）", options: ["もしかしたら", "きっと", "ぜひ", "いろいろ"], a: 0 },
-                    { q: "道が（　）なりました。（ซับซ้อน）", options: ["複雑", "複雑に", "複雑な", "複雑く"], a: 1 },
-                    { q: "（　）お祈りしましたか。（ครั้งหนึ่ง/สักครั้ง）", options: ["一度", "一度も", "一回も", "いつ"], a: 1 },
-                    { q: "お湯が（　）。（ออกมา）", options: ["出します", "出ます", "おります", "おろします"], a: 1 },
-                    { q: "音を（　）します。（ทำให้ดังขึ้น）", options: ["大きい", "大きく", "大きに", "大きくて"], a: 1 },
-                    { q: "（　）遊びに来てください。（เชิญชวน）", options: ["きっと", "ぜひ", "たぶん", "もし"], a: 1 },
-                    { q: "約束の時間に（　）、どうしますか。", options: ["間に合わなかったら", "間に合わないと", "間に合わなくて", "間に合う"], a: 0 },
-                    { q: "図書館で本を（　）とき、カードが要ります。", options: ["借りた", "借りる", "借りて", "借ります"], a: 1 },
-                    { q: "砂糖を（　）なくてもいいですよ。", options: ["入れ", "入ら", "入る", "入って"], a: 0 },
+                    { q: "（　）雨{あめ}が降{ふ}ったら、行{い}きません。", options: ["もし", "いくら", "たぶん", "ぜひ"], a: 0 },
+                    { q: "彼{かれ}は（　）来{く}ると思{おも}います。", options: ["たぶん", "きっと", "もし", "いくら"], a: 1 },
+                    { q: "（　）高{たか}くても、買{か}います。", options: ["もし", "たぶん", "いくら", "ぜひ"], a: 2 },
+                    { q: "（　）来{こ}ないと思{おも}います。", options: ["もしかしたら", "きっと", "ぜひ", "いろいろ"], a: 0 },
+                    { q: "道{みち}が（　）なりました。", options: ["複雑", "複雑に", "複雑な", "複雑く"], a: 1 },
+                    { q: "（　）お祈{いの}りしましたか。", options: ["一度", "一度も", "一回も", "いつ"], a: 1 },
+                    { q: "お湯{ゆ}が（　）。", options: ["出します", "出ます", "おります", "おろします"], a: 1 },
+                    { q: "音{おと}を（　）します。", options: ["大きい", "大きく", "大きに", "大きくて"], a: 1 },
+                    { q: "（　）遊{あそ}びに来{き}てください。", options: ["きっと", "ぜひ", "たぶん", "もし"], a: 1 },
+                    { q: "約束{やくそく}の時間{じかん}に（　）、どうしますか。", options: ["間に合わなかったら", "間に合わないと", "間に合わなくて", "間に合う"], a: 0 },
+                    { q: "図書館{としょかん}で本{ほん}を（　）とき、カードが要{い}ります。", options: ["借りた", "借りる", "借りて", "借ります"], a: 1 },
+                    { q: "砂糖{さとう}を（　）なくてもいいですよ。", options: ["入れ", "入ら", "入る", "入って"], a: 0 },
+                    { q: "窓{まど}が（　）います。", options: ["閉めて", "閉まって", "閉め", "閉まり"], a: 1 },
+                    { q: "電車{でんしゃ}に（　）忘{わす}れました。", options: ["傘を", "傘が", "傘で", "傘に"], a: 0 },
+                    { q: "壁{かべ}に絵{え}が（　）あります。", options: ["かけ", "かけて", "かかって", "かかり"], a: 1 }
                 ]
+            }
+        };
+
+        // --- ICONS ---
+        const Icons = {
+            Clock: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+            Book: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>,
+            Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>,
+            Eye: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
+            Lock: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>,
+            Unlock: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>,
+            Settings: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        };
+
+        // --- HELPER FUNCTIONS ---
+        const getRandomQuestions = (questions, count) => {
+            if (!questions) return [];
+            const shuffled = [...questions].sort(() => 0.5 - Math.random());
+            return shuffled.slice(0, count);
+        };
+
+        const formatTime = (seconds) => {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = seconds % 60;
+            return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        };
+
+        // --- COMPONENTS ---
+
+        // 1. Ruby Text Parser Component
+        // Converts "漢字{かんじ}" to <ruby>漢字<rt>かんじ</rt></ruby>
+        const RubifiedText = ({ text, showFurigana }) => {
+            if (!text) return null;
+            
+            // Regex to match Kanji{Reading}
+            const regex = /([\u2E80-\u2E99\u2E9B-\u2EF3\u2F00-\u2FD5\u3005\u3007\u3021-\u3029\u3038-\u303B\u3400-\u4DB5\u4E00-\u9FCC\uF900-\uFA6D\uFA70-\uFAD9]+)\{([^\}]+)\}/g;
+            
+            const elements = [];
+            let lastIndex = 0;
+            let match;
+            
+            while ((match = regex.exec(text)) !== null) {
+                // Add text before match
+                if (match.index > lastIndex) {
+                    elements.push(text.substring(lastIndex, match.index));
                 }
-            };
+                // Add ruby element
+                elements.push(
+                    <ruby key={match.index}>
+                        {match[1]}
+                        <rt className={showFurigana ? '' : 'hidden'}>{match[2]}</rt>
+                    </ruby>
+                );
+                lastIndex = regex.lastIndex;
+            }
+            // Add remaining text
+            if (lastIndex < text.length) {
+                elements.push(text.substring(lastIndex));
+            }
 
-            const scrollToTop = () => {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            };
+            return <>{elements}</>;
+        };
 
+        // 2. Settings Controls
+        const SettingsBar = ({ settings, updateSettings, isExamMode }) => {
             return (
-                <div className="min-h-screen bg-gray-50 text-gray-800 font-sans pb-20">
-                {/* Header */}
-                <header className="bg-indigo-700 text-white p-4 shadow-lg sticky top-0 z-50">
-                    <div className="max-w-4xl mx-auto flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                        <div className="w-6 h-6"><Icons.BookOpen /></div>
-                        <h1 className="text-xl font-bold truncate">แบบฝึกหัดภาษาญี่ปุ่น (บทที่ 13-25)</h1>
+                <div className="bg-white/90 backdrop-blur-sm shadow-sm border-b border-gray-200 px-4 py-2 flex items-center justify-end gap-4 text-sm sticky top-[60px] z-40">
+                    {/* Font Size Control */}
+                    <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
+                        <button 
+                            onClick={() => updateSettings({ fontSize: Math.max(0, settings.fontSize - 1) })}
+                            className="w-8 h-8 flex items-center justify-center hover:bg-white rounded shadow-sm text-gray-600 font-bold"
+                            title="ลดขนาดตัวอักษร"
+                        >
+                            A-
+                        </button>
+                        <span className="text-gray-500 w-4 text-center">{settings.fontSize + 1}</span>
+                        <button 
+                            onClick={() => updateSettings({ fontSize: Math.min(2, settings.fontSize + 1) })}
+                            className="w-8 h-8 flex items-center justify-center hover:bg-white rounded shadow-sm text-gray-600 font-bold"
+                            title="เพิ่มขนาดตัวอักษร"
+                        >
+                            A+
+                        </button>
                     </div>
+
+                    {/* Furigana Toggle */}
                     <button 
-                        onClick={() => setShowMenu(!showMenu)} 
-                        className="p-2 md:hidden hover:bg-indigo-600 rounded"
+                        onClick={() => updateSettings({ showFurigana: !settings.showFurigana })}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all border ${
+                            settings.showFurigana 
+                                ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
+                                : 'bg-gray-50 border-gray-200 text-gray-500'
+                        }`}
                     >
-                        {showMenu ? <div className="w-6 h-6"><Icons.X /></div> : <div className="w-6 h-6"><Icons.Menu /></div>}
+                        <span className="text-xs font-bold font-jp">ふりがな</span>
+                        <div className={`w-8 h-4 rounded-full relative transition-colors ${settings.showFurigana ? 'bg-indigo-500' : 'bg-gray-300'}`}>
+                            <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${settings.showFurigana ? 'left-4.5 translate-x-1' : 'left-0.5'}`}></div>
+                        </div>
                     </button>
-                    
-                    {/* Desktop Nav */}
-                    <nav className="hidden md:flex gap-4 text-sm font-medium overflow-x-auto">
-                        {Object.keys(examData).map(key => (
-                        <button
-                            key={key}
-                            onClick={() => {
-                            setActivePart(key);
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }}
-                            className={`px-3 py-1 rounded-full transition-colors whitespace-nowrap ${
-                            activePart === key ? 'bg-white text-indigo-700' : 'hover:bg-indigo-600'
-                            }`}
-                        >
-                            {key.replace('part', 'Part ')}
-                        </button>
-                        ))}
-                    </nav>
-                    </div>
-                </header>
-
-                {/* Mobile Menu */}
-                {showMenu && (
-                    <div className="fixed inset-0 z-40 bg-indigo-900/95 flex flex-col items-center justify-center p-6 md:hidden">
-                    <button onClick={() => setShowMenu(false)} className="absolute top-4 right-4 text-white">
-                        <div className="w-8 h-8"><Icons.X /></div>
-                    </button>
-                    <div className="flex flex-col gap-4 w-full max-w-xs">
-                        {Object.entries(examData).map(([key, data]) => (
-                        <button
-                            key={key}
-                            onClick={() => {
-                            setActivePart(key);
-                            setShowMenu(false);
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }}
-                            className={`p-4 rounded-lg text-lg font-bold text-center transition-all ${
-                            activePart === key 
-                                ? 'bg-white text-indigo-700 shadow-xl' 
-                                : 'bg-indigo-800 text-white hover:bg-indigo-700'
-                            }`}
-                        >
-                            {data.title.split(':')[0]}
-                        </button>
-                        ))}
-                    </div>
-                    </div>
-                )}
-
-                {/* Main Content */}
-                <main className="max-w-4xl mx-auto p-4 md:p-8">
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8">
-                    <h2 className="text-2xl font-bold text-indigo-800 mb-2">{examData[activePart].title}</h2>
-                    <p className="text-gray-500 mb-6 flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-                        {examData[activePart].instruction}
-                    </p>
-
-                    <div className="space-y-6">
-                        {examData[activePart].questions.map((item, index) => (
-                        <QuestionItem 
-                            key={`${activePart}-${index}`} 
-                            index={index} 
-                            data={item} 
-                            type={examData[activePart].type} 
-                        />
-                        ))}
-                    </div>
-                    </div>
-
-                    {/* Navigation Buttons */}
-                    <div className="flex justify-between mt-8">
-                    <button
-                        onClick={() => {
-                        const keys = Object.keys(examData);
-                        const prevIdx = keys.indexOf(activePart) - 1;
-                        if (prevIdx >= 0) {
-                            setActivePart(keys[prevIdx]);
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                        }
-                        }}
-                        disabled={activePart === 'part1'}
-                        className="px-6 py-3 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-                    >
-                        &larr; ก่อนหน้า
-                    </button>
-
-                    <button
-                        onClick={() => {
-                        const keys = Object.keys(examData);
-                        const nextIdx = keys.indexOf(activePart) + 1;
-                        if (nextIdx < keys.length) {
-                            setActivePart(keys[nextIdx]);
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                        }
-                        }}
-                        disabled={activePart === 'part7'}
-                        className="px-6 py-3 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-md hover:shadow-lg transition-all"
-                    >
-                        ถัดไป &rarr;
-                    </button>
-                    </div>
-                </main>
-
-                <button 
-                    onClick={scrollToTop}
-                    className="fixed bottom-6 right-6 p-3 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 transition-all z-30 opacity-80 hover:opacity-100"
-                >
-                    <div className="w-6 h-6"><Icons.ArrowUp /></div>
-                </button>
                 </div>
             );
         };
 
-        const QuestionItem = ({ index, data, type }) => {
-            const [userAnswer, setUserAnswer] = useState('');
-            const [showAnswer, setShowAnswer] = useState(false);
-            const [selectedOption, setSelectedOption] = useState(null);
-
-            if (type === 'fill-in') {
-                return (
-                <div className="p-4 rounded-xl border-l-4 border-indigo-200 bg-gray-50 hover:bg-white hover:shadow-md transition-all">
-                    <div className="flex gap-3 mb-3">
-                    <span className="font-bold text-indigo-600 min-w-[1.5rem]">{index + 1}.</span>
-                    <p className="text-lg text-gray-800 leading-relaxed font-medium">{data.q}</p>
-                    </div>
+        // 3. MENU SCREEN
+        const MenuScreen = ({ onStart }) => (
+            <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 to-indigo-800 p-4">
+                <div className="bg-white rounded-2xl shadow-2xl overflow-hidden max-w-4xl w-full flex flex-col md:flex-row">
                     
-                    <div className="ml-9 space-y-3">
-                    <textarea
-                        value={userAnswer}
-                        onChange={(e) => setUserAnswer(e.target.value)}
-                        placeholder="พิมพ์คำตอบของคุณที่นี่..."
-                        className="w-full p-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none transition-all resize-none bg-white"
-                        rows={2}
+                    {/* Exam Mode Card */}
+                    <div className="flex-1 p-8 md:p-12 hover:bg-gray-50 transition-colors border-b md:border-b-0 md:border-r border-gray-200 flex flex-col items-center text-center group">
+                        <div className="w-24 h-24 bg-red-100 rounded-full flex items-center justify-center mb-6 text-red-600 group-hover:scale-110 transition-transform">
+                            <Icons.Lock />
+                        </div>
+                        <h2 className="text-3xl font-bold text-gray-800 mb-4">โหมดสอบจริง</h2>
+                        <ul className="text-gray-600 text-left space-y-3 mb-8 text-sm font-light">
+                            <li className="flex items-center gap-2"><span className="w-2 h-2 bg-red-500 rounded-full"></span>จับเวลา 2 ชั่วโมง</li>
+                            <li className="flex items-center gap-2"><span className="w-2 h-2 bg-red-500 rounded-full"></span>ห้ามดูเฉลย</li>
+                            <li className="flex items-center gap-2"><span className="w-2 h-2 bg-red-500 rounded-full"></span>สุ่มข้อสอบตามแนวข้อสอบจริง</li>
+                            <li className="flex items-center gap-2"><span className="w-2 h-2 bg-red-500 rounded-full"></span>ห้ามคัดลอก (Copy/Paste)</li>
+                        </ul>
+                        <button onClick={() => onStart('exam')} className="mt-auto px-8 py-4 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-lg shadow-lg w-full transition-all transform hover:-translate-y-1">
+                            เริ่มสอบ
+                        </button>
+                    </div>
+
+                    {/* Practice Mode Card */}
+                    <div className="flex-1 p-8 md:p-12 hover:bg-gray-50 transition-colors flex flex-col items-center text-center group">
+                        <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6 text-green-600 group-hover:scale-110 transition-transform">
+                            <Icons.Unlock />
+                        </div>
+                        <h2 className="text-3xl font-bold text-gray-800 mb-4">โหมดฝึกฝน</h2>
+                         <ul className="text-gray-600 text-left space-y-3 mb-8 text-sm font-light">
+                            <li className="flex items-center gap-2"><span className="w-2 h-2 bg-green-500 rounded-full"></span>ไม่มีเวลาจำกัด</li>
+                            <li className="flex items-center gap-2"><span className="w-2 h-2 bg-green-500 rounded-full"></span>ดูเฉลยได้ทันที</li>
+                            <li className="flex items-center gap-2"><span className="w-2 h-2 bg-green-500 rounded-full"></span>คัดลอกโจทย์ได้</li>
+                        </ul>
+                        <div className="mt-auto w-full space-y-3">
+                            <button onClick={() => onStart('practice_all')} className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold w-full transition-colors">
+                                ฝึกทำทุกข้อในคลัง
+                            </button>
+                            <button onClick={() => onStart('practice_random')} className="px-8 py-3 bg-teal-500 hover:bg-teal-600 text-white rounded-xl font-bold w-full transition-colors">
+                                ฝึกแบบสุ่ม (เหมือนสอบ)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+
+        // 4. EXAM INTERFACE
+        const ExamInterface = ({ mode, examData, onFinish }) => {
+            const [activePart, setActivePart] = useState('part1');
+            const [userAnswers, setUserAnswers] = useState({});
+            const [timeLeft, setTimeLeft] = useState(EXAM_CONFIG.duration);
+            const [settings, setSettings] = useState({
+                fontSize: 1, // 0=sm, 1=base, 2=lg
+                showFurigana: true
+            });
+            const timerRef = useRef(null);
+
+            const isExamMode = mode === 'exam';
+
+            // Timer Logic
+            useEffect(() => {
+                if (isExamMode) {
+                    timerRef.current = setInterval(() => {
+                        setTimeLeft(prev => {
+                            if (prev <= 1) {
+                                clearInterval(timerRef.current);
+                                onFinish(userAnswers, true); // Auto finish
+                                return 0;
+                            }
+                            return prev - 1;
+                        });
+                    }, 1000);
+                }
+                return () => clearInterval(timerRef.current);
+            }, [isExamMode, onFinish, userAnswers]);
+
+            // Anti-Cheat
+            useEffect(() => {
+                if (isExamMode) {
+                    const preventDefault = (e) => e.preventDefault();
+                    document.addEventListener('contextmenu', preventDefault);
+                    document.addEventListener('copy', preventDefault);
+                    document.addEventListener('selectstart', preventDefault);
+                    return () => {
+                        document.removeEventListener('contextmenu', preventDefault);
+                        document.removeEventListener('copy', preventDefault);
+                        document.removeEventListener('selectstart', preventDefault);
+                    };
+                }
+            }, [isExamMode]);
+
+            return (
+                <div className={`min-h-screen pb-20 ${isExamMode ? 'no-select' : ''}`}>
+                    {/* Header */}
+                    <header className={`${isExamMode ? 'bg-red-900' : 'bg-indigo-700'} text-white p-3 sticky top-0 z-50 shadow-md transition-colors`}>
+                        <div className="max-w-6xl mx-auto flex justify-between items-center">
+                            <h1 className="font-bold text-lg flex items-center gap-2">
+                                {isExamMode ? <Icons.Lock /> : <Icons.Book />}
+                                <span className="hidden sm:inline font-medium">{isExamMode ? 'การสอบปลายภาค (จำลอง)' : 'โหมดฝึกฝน'}</span>
+                            </h1>
+                            
+                            {isExamMode && (
+                                <div className={`flex items-center gap-2 font-mono text-xl font-bold px-4 py-1 rounded-lg ${timeLeft < 300 ? 'bg-red-600 animate-pulse' : 'bg-black/30'}`}>
+                                    <Icons.Clock /> {formatTime(timeLeft)}
+                                </div>
+                            )}
+
+                            <button 
+                                onClick={() => {
+                                    if(window.confirm('ต้องการส่งคำตอบและดูผลลัพธ์หรือไม่?')) {
+                                        onFinish(userAnswers, false);
+                                    }
+                                }}
+                                className="bg-white text-indigo-900 hover:bg-gray-100 px-5 py-2 rounded-lg text-sm font-bold shadow-sm transition-all"
+                            >
+                                {isExamMode ? 'ส่งข้อสอบ' : 'สรุปผล'}
+                            </button>
+                        </div>
+
+                        {/* Part Navigation */}
+                        <div className="max-w-6xl mx-auto mt-3 overflow-x-auto flex gap-2 pb-1 scrollbar-hide">
+                            {Object.keys(examData).map(key => (
+                                <button
+                                    key={key}
+                                    onClick={() => {
+                                        setActivePart(key);
+                                        window.scrollTo({ top: 0 });
+                                    }}
+                                    className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
+                                        activePart === key 
+                                            ? 'bg-white text-indigo-900 shadow-md transform scale-105' 
+                                            : 'bg-black/20 hover:bg-black/30 text-white/90'
+                                    }`}
+                                >
+                                    {key.replace('part', 'Part ')}
+                                </button>
+                            ))}
+                        </div>
+                    </header>
+
+                    {/* Settings Bar */}
+                    <SettingsBar 
+                        settings={settings} 
+                        updateSettings={(newSets) => setSettings(prev => ({...prev, ...newSets}))} 
+                        isExamMode={isExamMode}
                     />
-                    
-                    <button
-                        onClick={() => setShowAnswer(!showAnswer)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                        showAnswer 
-                            ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' 
-                            : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
-                        }`}
-                    >
-                        {showAnswer ? <><div className="w-4 h-4"><Icons.EyeOff /></div> ซ่อนเฉลย</> : <><div className="w-4 h-4"><Icons.Eye /></div> ดูเฉลย</>}
-                    </button>
 
-                    {showAnswer && (
-                        <div className="mt-2 p-4 bg-green-50 rounded-lg border border-green-200 animate-in fade-in slide-in-from-top-2 duration-300">
-                        <p className="text-xs font-bold text-green-600 uppercase tracking-wide mb-1">เฉลย / Answer:</p>
-                        <p className="text-green-800 font-medium text-lg">{data.a}</p>
-                        </div>
-                    )}
-                    </div>
-                </div>
-                );
-            }
-
-            if (type === 'multiple-choice') {
-                const isCorrect = selectedOption === data.a;
-                const hasAnswered = selectedOption !== null;
-
-                return (
-                <div className="p-4 rounded-xl border-l-4 border-purple-200 bg-gray-50 hover:bg-white hover:shadow-md transition-all">
-                    <div className="flex gap-3 mb-4">
-                    <span className="font-bold text-purple-600 min-w-[1.5rem]">{index + 1}.</span>
-                    <p className="text-lg text-gray-800 font-medium">{data.q}</p>
-                    </div>
-
-                    <div className="ml-9 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {data.options.map((opt, optIdx) => (
-                        <button
-                        key={optIdx}
-                        onClick={() => setSelectedOption(optIdx)}
-                        disabled={showAnswer}
-                        className={`p-3 text-left rounded-lg border transition-all relative ${
-                            selectedOption === optIdx
-                            ? 'bg-indigo-50 border-indigo-400 ring-1 ring-indigo-400'
-                            : 'bg-white border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30'
-                        } ${showAnswer && optIdx === data.a ? '!bg-green-100 !border-green-500 !ring-2 !ring-green-500' : ''}
-                            ${showAnswer && selectedOption === optIdx && selectedOption !== data.a ? '!bg-red-100 !border-red-400' : ''}
-                        `}
-                        >
-                        <div className="flex items-center justify-between">
-                            <span><span className="font-bold text-gray-400 mr-2">{String.fromCharCode(97 + optIdx)}.</span> {opt}</span>
-                            {showAnswer && optIdx === data.a && <div className="w-5 h-5 text-green-600"><Icons.Check /></div>}
-                            {showAnswer && selectedOption === optIdx && selectedOption !== data.a && <div className="w-5 h-5 text-red-500"><Icons.X /></div>}
-                        </div>
-                        </button>
-                    ))}
-                    </div>
-
-                    <div className="ml-9 mt-4">
-                    {!showAnswer ? (
-                        <button
-                        onClick={() => setShowAnswer(true)}
-                        disabled={!hasAnswered}
-                        className="flex items-center gap-2 px-5 py-2 rounded-lg bg-indigo-600 text-white font-medium shadow-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                        >
-                        <div className="w-4 h-4"><Icons.Check /></div> ตรวจคำตอบ
-                        </button>
-                    ) : (
-                        <div className={`p-3 rounded-lg border ${isCorrect ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
-                            <p className="font-bold">
-                            {isCorrect ? 'ถูกต้อง! (Correct)' : 'ผิดครับ (Incorrect)'}
+                    {/* Content */}
+                    <main className="max-w-4xl mx-auto p-4 md:p-8">
+                        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 md:p-8 mb-8">
+                            <h2 className="text-2xl font-bold text-gray-800 mb-2 border-b pb-4 border-gray-100">
+                                {examData[activePart].title}
+                            </h2>
+                            <p className="text-gray-500 mb-8 bg-gray-50 p-3 rounded-lg border-l-4 border-indigo-400">
+                                {examData[activePart].instruction}
                             </p>
-                            {!isCorrect && <p className="text-sm mt-1">คำตอบที่ถูกคือ: <span className="font-bold">{data.options[data.a]}</span></p>}
+
+                            <div className="space-y-8">
+                                {examData[activePart].questions.map((qData, idx) => (
+                                    <QuestionItem 
+                                        key={`${activePart}-${idx}`}
+                                        idx={idx}
+                                        partKey={activePart}
+                                        data={qData}
+                                        type={examData[activePart].type}
+                                        answer={userAnswers[`${activePart}-${idx}`] || ''}
+                                        onAnswer={(val) => setUserAnswers(prev => ({ ...prev, [`${activePart}-${idx}`]: val }))}
+                                        showInstantAnswer={!isExamMode}
+                                        settings={settings}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Navigation Footer */}
+                        <div className="flex justify-between">
+                             <button
+                                onClick={() => {
+                                    const keys = Object.keys(examData);
+                                    const prev = keys[keys.indexOf(activePart) - 1];
+                                    if(prev) { setActivePart(prev); window.scrollTo({top:0}); }
+                                }}
+                                disabled={activePart === 'part1'}
+                                className="px-6 py-3 bg-gray-200 text-gray-600 rounded-xl font-bold disabled:opacity-50"
+                            >
+                                &larr; ก่อนหน้า
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const keys = Object.keys(examData);
+                                    const next = keys[keys.indexOf(activePart) + 1];
+                                    if(next) { setActivePart(next); window.scrollTo({top:0}); }
+                                }}
+                                disabled={activePart === 'part7'}
+                                className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg hover:bg-indigo-700 disabled:opacity-50"
+                            >
+                                ถัดไป &rarr;
+                            </button>
+                        </div>
+                    </main>
+                </div>
+            );
+        };
+
+        const QuestionItem = ({ idx, partKey, data, type, answer, onAnswer, showInstantAnswer, settings }) => {
+            const [revealed, setRevealed] = useState(false);
+            
+            // Dynamic classes based on font size setting
+            const fontSizes = ['text-base', 'text-xl', 'text-2xl'];
+            const currentSize = fontSizes[settings.fontSize];
+
+            return (
+                <div className={`relative group ${settings.showFurigana ? '' : 'hide-furigana'}`}>
+                    <div className="absolute -left-3 md:-left-8 top-1 font-bold text-gray-300 text-xl">{idx + 1}</div>
+                    <div className="mb-4">
+                        <p className={`${currentSize} font-medium text-gray-800 jp-text leading-loose`}>
+                            <RubifiedText text={data.q} showFurigana={settings.showFurigana} />
+                        </p>
+                    </div>
+
+                    {type === 'multiple-choice' ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {data.options.map((opt, optIdx) => (
+                                <button
+                                    key={optIdx}
+                                    onClick={() => onAnswer(optIdx)}
+                                    className={`p-3 text-left rounded-lg border-2 transition-all ${
+                                        answer === optIdx 
+                                            ? 'border-indigo-500 bg-indigo-50 text-indigo-900 font-medium shadow-sm' 
+                                            : 'border-gray-200 hover:border-gray-300 bg-white'
+                                    }`}
+                                >
+                                    <span className="mr-2 text-gray-400 font-bold">{String.fromCharCode(97 + optIdx)}.</span>
+                                    <span className={currentSize}>
+                                        <RubifiedText text={opt} showFurigana={settings.showFurigana} />
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                    ) : (
+                        <textarea
+                            value={answer}
+                            onChange={(e) => onAnswer(e.target.value)}
+                            placeholder="พิมพ์คำตอบ..."
+                            rows="2"
+                            className={`w-full p-3 rounded-lg border-2 border-gray-200 focus:border-indigo-500 outline-none transition-colors bg-gray-50 focus:bg-white ${currentSize} jp-text`}
+                        />
+                    )}
+
+                    {/* Instant Answer Reveal (Practice Mode Only) */}
+                    {showInstantAnswer && (
+                        <div className="mt-3">
+                            <button 
+                                onClick={() => setRevealed(!revealed)}
+                                className="text-sm text-indigo-500 hover:text-indigo-700 font-medium flex items-center gap-1"
+                            >
+                                <Icons.Eye /> {revealed ? 'ซ่อนเฉลย' : 'ดูเฉลย'}
+                            </button>
+                            
+                            {revealed && (
+                                <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-800 animate-in fade-in slide-in-from-top-1">
+                                    <span className="font-bold text-xs uppercase tracking-wide text-green-600 block mb-1">เฉลย:</span>
+                                    {type === 'multiple-choice' ? (
+                                        <span>
+                                            ข้อ {String.fromCharCode(97 + data.a)}: <strong>{data.options[data.a]}</strong>
+                                        </span>
+                                    ) : (
+                                        <span className={`jp-text font-medium ${currentSize}`}>{data.a}</span>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
+                </div>
+            );
+        };
+
+        // 5. RESULT SUMMARY
+        const ResultSummary = ({ examData, userAnswers, onRestart }) => {
+            let mcScore = 0;
+            let mcTotal = 0;
+            if (examData.part7) {
+                mcTotal = examData.part7.questions.length;
+                examData.part7.questions.forEach((q, idx) => {
+                    if (userAnswers[`part7-${idx}`] === q.a) mcScore++;
+                });
+            }
+
+            return (
+                <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+                    <div className="max-w-4xl mx-auto">
+                        <div className="bg-white rounded-2xl shadow-xl p-8 mb-8 text-center">
+                            <h2 className="text-3xl font-bold text-gray-800 mb-4">สรุปผลการทำข้อสอบ</h2>
+                            
+                            <div className="inline-block bg-indigo-50 px-8 py-6 rounded-2xl border border-indigo-100">
+                                <p className="text-gray-500 uppercase tracking-wide text-sm font-bold mb-2">คะแนน Part 7 (ปรนัย)</p>
+                                <div className="text-5xl font-bold text-indigo-600 mb-1">
+                                    {mcScore} <span className="text-2xl text-gray-400">/ {mcTotal}</span>
+                                </div>
+                                <div className="w-full bg-gray-200 h-2 rounded-full mt-2 overflow-hidden">
+                                    <div className="bg-indigo-500 h-full" style={{ width: `${(mcScore/mcTotal)*100}%` }}></div>
+                                </div>
+                            </div>
+                            
+                            <p className="mt-6 text-gray-600">
+                                สำหรับ Part 1-6 โปรดตรวจสอบคำตอบของท่านเทียบกับเฉลยด้านล่าง
+                            </p>
+                            
+                            <button 
+                                onClick={onRestart}
+                                className="mt-8 px-8 py-3 bg-gray-800 hover:bg-black text-white rounded-lg font-bold shadow-lg transition-transform hover:-translate-y-1"
+                            >
+                                กลับไปหน้าเมนูหลัก
+                            </button>
+                        </div>
+
+                        <div className="space-y-8">
+                            {Object.entries(examData).map(([partKey, partData]) => (
+                                <div key={partKey} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                                    <div className="bg-gray-100 px-6 py-4 border-b border-gray-200 font-bold text-gray-700 flex justify-between items-center">
+                                        <span>{partData.title}</span>
+                                        <span className="text-xs bg-gray-200 px-2 py-1 rounded text-gray-500">
+                                            {partData.questions.length} ข้อ
+                                        </span>
+                                    </div>
+                                    <div className="p-6 space-y-6">
+                                        {partData.questions.map((q, idx) => {
+                                            const uAns = userAnswers[`${partKey}-${idx}`];
+                                            const isMc = partData.type === 'multiple-choice';
+                                            const isCorrect = isMc && uAns === q.a;
+
+                                            return (
+                                                <div key={idx} className={`border-l-4 pl-4 ${isMc ? (isCorrect ? 'border-green-400' : 'border-red-400') : 'border-blue-300'}`}>
+                                                    <p className="font-medium text-gray-800 mb-2 jp-text">
+                                                        <RubifiedText text={q.q} showFurigana={true} />
+                                                    </p>
+                                                    
+                                                    <div className="text-sm mb-1">
+                                                        <span className="text-gray-500">ตอบ: </span>
+                                                        <span className={`font-medium ${isMc ? (isCorrect ? 'text-green-600' : 'text-red-600') : 'text-gray-800'}`}>
+                                                            {isMc 
+                                                                ? (uAns !== undefined ? <RubifiedText text={q.options[uAns]} showFurigana={true} /> : '-') 
+                                                                : (uAns || '-')}
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="text-sm bg-green-50 p-2 rounded text-green-800 inline-block">
+                                                        <span className="font-bold">เฉลย: </span>
+                                                        {isMc ? <RubifiedText text={q.options[q.a]} showFurigana={true} /> : q.a}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </div>
-                );
-            }
+            );
+        };
+
+        // MAIN APP CONTAINER
+        const App = () => {
+            const [gameState, setGameState] = useState('menu'); // menu, exam, result
+            const [mode, setMode] = useState(null); // exam, practice_all, practice_random
+            const [currentExamData, setCurrentExamData] = useState(null);
+            const [finalAnswers, setFinalAnswers] = useState({});
+
+            const startExam = (selectedMode) => {
+                let data = {};
+                
+                if (selectedMode === 'practice_all') {
+                    data = QUESTION_POOL;
+                } else {
+                    Object.keys(QUESTION_POOL).forEach(key => {
+                        const pool = QUESTION_POOL[key];
+                        const count = EXAM_CONFIG.counts[key] || 5;
+                        data[key] = {
+                            ...pool,
+                            questions: getRandomQuestions(pool.questions, count)
+                        };
+                    });
+                }
+
+                setCurrentExamData(data);
+                setMode(selectedMode);
+                setGameState('exam');
+                window.scrollTo(0, 0);
+            };
+
+            const finishExam = (answers, isTimeOut) => {
+                setFinalAnswers(answers);
+                setGameState('result');
+                if (isTimeOut) alert("หมดเวลาการสอบ!");
+                window.scrollTo(0, 0);
+            };
+
+            if (gameState === 'menu') return <MenuScreen onStart={startExam} />;
+            if (gameState === 'exam') return <ExamInterface mode={mode} examData={currentExamData} onFinish={finishExam} />;
+            if (gameState === 'result') return <ResultSummary examData={currentExamData} userAnswers={finalAnswers} onRestart={() => setGameState('menu')} />;
+            
+            return null;
         };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<JapaneseExam />);
+        root.render(<App />);
     </script>
 </body>
 </html>
