@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JPN1102 Exam Simulator (Furigana Edition)</title>
+    <title>JPN1102 Exam Simulator (Inline Input Edition)</title>
     
     <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -15,35 +15,41 @@
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- Google Fonts: Noto Sans Thai & Noto Sans JP -->
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Noto+Sans+Thai:wght@300;400;500;700&display=swap" rel="stylesheet">
 
     <style>
         body { font-family: 'Noto Sans Thai', sans-serif; }
-        .jp-text { font-family: 'Noto Sans JP', sans-serif; line-height: 1.8; }
+        .jp-text { font-family: 'Noto Sans JP', sans-serif; line-height: 2; }
         
-        /* Ruby (Furigana) Styling */
+        /* Ruby Styling */
         ruby { font-family: 'Noto Sans JP', sans-serif; ruby-align: center; }
-        rt { font-size: 0.6em; color: #6b7280; font-weight: normal; }
-        
-        /* Hide Furigana Class */
+        rt { font-size: 0.6em; color: #6b7280; font-weight: normal; user-select: none; }
         .hide-furigana rt { display: none; }
         .hide-furigana ruby { ruby-position: unset; }
 
-        /* Prevent Selection in Exam Mode */
-        .no-select {
-            -webkit-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-            user-select: none;
-        }
+        .no-select { user-select: none; }
         
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #f1f1f1; }
-        ::-webkit-scrollbar-thumb { background: #c7c7c7; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+        /* Inline Input Styling */
+        .inline-input {
+            display: inline-block;
+            border-bottom: 2px solid #6366f1;
+            background: #f3f4f6;
+            text-align: center;
+            padding: 0 0.5rem;
+            margin: 0 0.25rem;
+            border-radius: 0.25rem 0.25rem 0 0;
+            outline: none;
+            transition: all 0.2s;
+            font-family: 'Noto Sans JP', sans-serif;
+            min-width: 60px;
+        }
+        .inline-input:focus {
+            background: #e0e7ff;
+            border-color: #4338ca;
+        }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800">
@@ -54,19 +60,19 @@
 
         // --- CONFIGURATION ---
         const EXAM_CONFIG = {
-            duration: 120 * 60, // 2 ชั่วโมง
+            duration: 120 * 60, 
             counts: {
                 part1: 15, part2: 5, part3: 7, part4: 5, 
                 part5: 12, part6: 15, part7: 12
             }
         };
 
-        // --- Question Pool (With Furigana Syntax: Kanji{reading}) ---
         const QUESTION_POOL = {
             part1: {
                 title: "Part 1: เติมคำช่วย (Joshi)",
-                instruction: "จงเติมคำช่วยที่ถูกต้องลงในช่องว่าง",
-                type: "fill-in",
+                instruction: "จงเติมคำช่วยที่ถูกต้องลงในช่องว่างในประโยค",
+                type: "fill-in-inline", // Changed to inline
+                delimiter: /（　）/,   // Split by Japanese parenthesis gap
                 questions: [
                     { q: "あれ（　）佐藤{さとう}さん（　）くれたワインです。", a: "あれ（は）佐藤さん（が）くれたワインです。" },
                     { q: "時間{じかん}（　）あったら、京都{きょうと}（　）旅行{りょこう}したいです。", a: "時間（が）あったら、京都（へ/に）旅行したいです。" },
@@ -93,7 +99,8 @@
             part2: {
                 title: "Part 2: ผันรูปคำกริยา/คำศัพท์",
                 instruction: "เปลี่ยนคำในวงเล็บให้อยู่ในรูปที่ถูกต้อง",
-                type: "fill-in",
+                type: "fill-in-inline",
+                delimiter: /_______/, // Split by underscores
                 questions: [
                     { q: "（行{い}きます → _______ ）とき、「行{い}ってまいります」と言{い}います。", a: "出かける (Dict form) / 行く" },
                     { q: "あそこで（歌{うた}っています → _______ ）人{ひと}は誰{だれ}ですか。", a: "歌っている" },
@@ -200,51 +207,26 @@
             }
         };
 
-        // --- ICONS ---
         const Icons = {
             Clock: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
             Book: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>,
-            Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>,
             Eye: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
             Lock: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>,
             Unlock: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>,
-            Settings: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            Settings: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         };
 
-        // --- HELPER FUNCTIONS ---
-        const getRandomQuestions = (questions, count) => {
-            if (!questions) return [];
-            const shuffled = [...questions].sort(() => 0.5 - Math.random());
-            return shuffled.slice(0, count);
-        };
-
-        const formatTime = (seconds) => {
-            const h = Math.floor(seconds / 3600);
-            const m = Math.floor((seconds % 3600) / 60);
-            const s = seconds % 60;
-            return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-        };
-
-        // --- COMPONENTS ---
-
-        // 1. Ruby Text Parser Component
-        // Converts "漢字{かんじ}" to <ruby>漢字<rt>かんじ</rt></ruby>
         const RubifiedText = ({ text, showFurigana }) => {
             if (!text) return null;
-            
-            // Regex to match Kanji{Reading}
             const regex = /([\u2E80-\u2E99\u2E9B-\u2EF3\u2F00-\u2FD5\u3005\u3007\u3021-\u3029\u3038-\u303B\u3400-\u4DB5\u4E00-\u9FCC\uF900-\uFA6D\uFA70-\uFAD9]+)\{([^\}]+)\}/g;
-            
             const elements = [];
             let lastIndex = 0;
             let match;
             
             while ((match = regex.exec(text)) !== null) {
-                // Add text before match
                 if (match.index > lastIndex) {
                     elements.push(text.substring(lastIndex, match.index));
                 }
-                // Add ruby element
                 elements.push(
                     <ruby key={match.index}>
                         {match[1]}
@@ -253,82 +235,25 @@
                 );
                 lastIndex = regex.lastIndex;
             }
-            // Add remaining text
-            if (lastIndex < text.length) {
-                elements.push(text.substring(lastIndex));
-            }
-
+            if (lastIndex < text.length) elements.push(text.substring(lastIndex));
             return <>{elements}</>;
         };
 
-        // 2. Settings Controls
-        const SettingsBar = ({ settings, updateSettings, isExamMode }) => {
-            return (
-                <div className="bg-white/90 backdrop-blur-sm shadow-sm border-b border-gray-200 px-4 py-2 flex items-center justify-end gap-4 text-sm sticky top-[60px] z-40">
-                    {/* Font Size Control */}
-                    <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
-                        <button 
-                            onClick={() => updateSettings({ fontSize: Math.max(0, settings.fontSize - 1) })}
-                            className="w-8 h-8 flex items-center justify-center hover:bg-white rounded shadow-sm text-gray-600 font-bold"
-                            title="ลดขนาดตัวอักษร"
-                        >
-                            A-
-                        </button>
-                        <span className="text-gray-500 w-4 text-center">{settings.fontSize + 1}</span>
-                        <button 
-                            onClick={() => updateSettings({ fontSize: Math.min(2, settings.fontSize + 1) })}
-                            className="w-8 h-8 flex items-center justify-center hover:bg-white rounded shadow-sm text-gray-600 font-bold"
-                            title="เพิ่มขนาดตัวอักษร"
-                        >
-                            A+
-                        </button>
-                    </div>
-
-                    {/* Furigana Toggle */}
-                    <button 
-                        onClick={() => updateSettings({ showFurigana: !settings.showFurigana })}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all border ${
-                            settings.showFurigana 
-                                ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
-                                : 'bg-gray-50 border-gray-200 text-gray-500'
-                        }`}
-                    >
-                        <span className="text-xs font-bold font-jp">ふりがな</span>
-                        <div className={`w-8 h-4 rounded-full relative transition-colors ${settings.showFurigana ? 'bg-indigo-500' : 'bg-gray-300'}`}>
-                            <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${settings.showFurigana ? 'left-4.5 translate-x-1' : 'left-0.5'}`}></div>
-                        </div>
-                    </button>
-                </div>
-            );
-        };
-
-        // 3. MENU SCREEN
         const MenuScreen = ({ onStart }) => (
             <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 to-indigo-800 p-4">
                 <div className="bg-white rounded-2xl shadow-2xl overflow-hidden max-w-4xl w-full flex flex-col md:flex-row">
-                    
-                    {/* Exam Mode Card */}
                     <div className="flex-1 p-8 md:p-12 hover:bg-gray-50 transition-colors border-b md:border-b-0 md:border-r border-gray-200 flex flex-col items-center text-center group">
-                        <div className="w-24 h-24 bg-red-100 rounded-full flex items-center justify-center mb-6 text-red-600 group-hover:scale-110 transition-transform">
-                            <Icons.Lock />
-                        </div>
+                        <div className="w-24 h-24 bg-red-100 rounded-full flex items-center justify-center mb-6 text-red-600 group-hover:scale-110 transition-transform"><Icons.Lock /></div>
                         <h2 className="text-3xl font-bold text-gray-800 mb-4">โหมดสอบจริง</h2>
                         <ul className="text-gray-600 text-left space-y-3 mb-8 text-sm font-light">
                             <li className="flex items-center gap-2"><span className="w-2 h-2 bg-red-500 rounded-full"></span>จับเวลา 2 ชั่วโมง</li>
                             <li className="flex items-center gap-2"><span className="w-2 h-2 bg-red-500 rounded-full"></span>ห้ามดูเฉลย</li>
                             <li className="flex items-center gap-2"><span className="w-2 h-2 bg-red-500 rounded-full"></span>สุ่มข้อสอบตามแนวข้อสอบจริง</li>
-                            <li className="flex items-center gap-2"><span className="w-2 h-2 bg-red-500 rounded-full"></span>ห้ามคัดลอก (Copy/Paste)</li>
                         </ul>
-                        <button onClick={() => onStart('exam')} className="mt-auto px-8 py-4 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-lg shadow-lg w-full transition-all transform hover:-translate-y-1">
-                            เริ่มสอบ
-                        </button>
+                        <button onClick={() => onStart('exam')} className="mt-auto px-8 py-4 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-lg shadow-lg w-full transition-all hover:-translate-y-1">เริ่มสอบ</button>
                     </div>
-
-                    {/* Practice Mode Card */}
                     <div className="flex-1 p-8 md:p-12 hover:bg-gray-50 transition-colors flex flex-col items-center text-center group">
-                        <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6 text-green-600 group-hover:scale-110 transition-transform">
-                            <Icons.Unlock />
-                        </div>
+                        <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6 text-green-600 group-hover:scale-110 transition-transform"><Icons.Unlock /></div>
                         <h2 className="text-3xl font-bold text-gray-800 mb-4">โหมดฝึกฝน</h2>
                          <ul className="text-gray-600 text-left space-y-3 mb-8 text-sm font-light">
                             <li className="flex items-center gap-2"><span className="w-2 h-2 bg-green-500 rounded-full"></span>ไม่มีเวลาจำกัด</li>
@@ -336,39 +261,56 @@
                             <li className="flex items-center gap-2"><span className="w-2 h-2 bg-green-500 rounded-full"></span>คัดลอกโจทย์ได้</li>
                         </ul>
                         <div className="mt-auto w-full space-y-3">
-                            <button onClick={() => onStart('practice_all')} className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold w-full transition-colors">
-                                ฝึกทำทุกข้อในคลัง
-                            </button>
-                            <button onClick={() => onStart('practice_random')} className="px-8 py-3 bg-teal-500 hover:bg-teal-600 text-white rounded-xl font-bold w-full transition-colors">
-                                ฝึกแบบสุ่ม (เหมือนสอบ)
-                            </button>
+                            <button onClick={() => onStart('practice_all')} className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold w-full transition-colors">ฝึกทำทุกข้อในคลัง</button>
+                            <button onClick={() => onStart('practice_random')} className="px-8 py-3 bg-teal-500 hover:bg-teal-600 text-white rounded-xl font-bold w-full transition-colors">ฝึกแบบสุ่ม (เหมือนสอบ)</button>
                         </div>
                     </div>
                 </div>
             </div>
         );
 
-        // 4. EXAM INTERFACE
+        const InlineQuestionRenderer = ({ questionText, delimiter, questionId, userAnswers, onAnswer, showFurigana, fontSizeClass, isDisabled }) => {
+            const parts = questionText.split(delimiter);
+            
+            return (
+                <div className={`leading-loose ${fontSizeClass} text-gray-800 font-medium`}>
+                    {parts.map((part, index) => (
+                        <React.Fragment key={index}>
+                            <RubifiedText text={part} showFurigana={showFurigana} />
+                            {index < parts.length - 1 && (
+                                <input
+                                    type="text"
+                                    disabled={isDisabled}
+                                    value={userAnswers[`${questionId}-slot-${index}`] || ''}
+                                    onChange={(e) => onAnswer(index, e.target.value)}
+                                    className="inline-input text-indigo-700"
+                                    style={{ fontSize: '0.9em' }}
+                                    autoComplete="off"
+                                />
+                            )}
+                        </React.Fragment>
+                    ))}
+                </div>
+            );
+        };
+
         const ExamInterface = ({ mode, examData, onFinish }) => {
             const [activePart, setActivePart] = useState('part1');
             const [userAnswers, setUserAnswers] = useState({});
             const [timeLeft, setTimeLeft] = useState(EXAM_CONFIG.duration);
-            const [settings, setSettings] = useState({
-                fontSize: 1, // 0=sm, 1=base, 2=lg
-                showFurigana: true
-            });
+            const [settings, setSettings] = useState({ fontSize: 1, showFurigana: true });
+            const [showSettings, setShowSettings] = useState(false);
             const timerRef = useRef(null);
 
             const isExamMode = mode === 'exam';
 
-            // Timer Logic
             useEffect(() => {
                 if (isExamMode) {
                     timerRef.current = setInterval(() => {
                         setTimeLeft(prev => {
                             if (prev <= 1) {
                                 clearInterval(timerRef.current);
-                                onFinish(userAnswers, true); // Auto finish
+                                onFinish(userAnswers, true);
                                 return 0;
                             }
                             return prev - 1;
@@ -378,26 +320,10 @@
                 return () => clearInterval(timerRef.current);
             }, [isExamMode, onFinish, userAnswers]);
 
-            // Anti-Cheat
-            useEffect(() => {
-                if (isExamMode) {
-                    const preventDefault = (e) => e.preventDefault();
-                    document.addEventListener('contextmenu', preventDefault);
-                    document.addEventListener('copy', preventDefault);
-                    document.addEventListener('selectstart', preventDefault);
-                    return () => {
-                        document.removeEventListener('contextmenu', preventDefault);
-                        document.removeEventListener('copy', preventDefault);
-                        document.removeEventListener('selectstart', preventDefault);
-                    };
-                }
-            }, [isExamMode]);
-
             return (
                 <div className={`min-h-screen pb-20 ${isExamMode ? 'no-select' : ''}`}>
-                    {/* Header */}
                     <header className={`${isExamMode ? 'bg-red-900' : 'bg-indigo-700'} text-white p-3 sticky top-0 z-50 shadow-md transition-colors`}>
-                        <div className="max-w-6xl mx-auto flex justify-between items-center">
+                        <div className="max-w-6xl mx-auto flex justify-between items-center relative">
                             <h1 className="font-bold text-lg flex items-center gap-2">
                                 {isExamMode ? <Icons.Lock /> : <Icons.Book />}
                                 <span className="hidden sm:inline font-medium">{isExamMode ? 'การสอบปลายภาค (จำลอง)' : 'โหมดฝึกฝน'}</span>
@@ -409,32 +335,52 @@
                                 </div>
                             )}
 
-                            <button 
-                                onClick={() => {
-                                    if(window.confirm('ต้องการส่งคำตอบและดูผลลัพธ์หรือไม่?')) {
-                                        onFinish(userAnswers, false);
-                                    }
-                                }}
-                                className="bg-white text-indigo-900 hover:bg-gray-100 px-5 py-2 rounded-lg text-sm font-bold shadow-sm transition-all"
-                            >
-                                {isExamMode ? 'ส่งข้อสอบ' : 'สรุปผล'}
-                            </button>
+                            <div className="flex items-center gap-3">
+                                <button 
+                                    onClick={() => setShowSettings(!showSettings)}
+                                    className="p-2 hover:bg-white/20 rounded-full transition-colors relative"
+                                    title="ตั้งค่า"
+                                >
+                                    <Icons.Settings />
+                                    {showSettings && (
+                                        <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-xl border border-gray-100 p-4 text-gray-800 animate-in fade-in slide-in-from-top-2 z-50 flex flex-col gap-4">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-sm font-bold">ขนาดตัวอักษร</span>
+                                                <div className="flex bg-gray-100 rounded-lg p-1">
+                                                    <button onClick={() => setSettings(s => ({...s, fontSize: Math.max(0, s.fontSize - 1)}))} className="w-8 h-8 hover:bg-white rounded font-bold">-</button>
+                                                    <span className="w-8 h-8 flex items-center justify-center text-xs">{settings.fontSize + 1}</span>
+                                                    <button onClick={() => setSettings(s => ({...s, fontSize: Math.min(2, s.fontSize + 1)}))} className="w-8 h-8 hover:bg-white rounded font-bold">+</button>
+                                                </div>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-sm font-bold">Furigana</span>
+                                                <button 
+                                                    onClick={() => setSettings(s => ({...s, showFurigana: !s.showFurigana}))}
+                                                    className={`w-12 h-6 rounded-full relative transition-colors ${settings.showFurigana ? 'bg-indigo-500' : 'bg-gray-300'}`}
+                                                >
+                                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${settings.showFurigana ? 'left-7' : 'left-1'}`}></div>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </button>
+                                <button 
+                                    onClick={() => {
+                                        if(window.confirm('ต้องการส่งคำตอบและดูผลลัพธ์หรือไม่?')) onFinish(userAnswers, false);
+                                    }}
+                                    className="bg-white text-indigo-900 hover:bg-gray-100 px-5 py-2 rounded-lg text-sm font-bold shadow-sm"
+                                >
+                                    {isExamMode ? 'ส่งข้อสอบ' : 'สรุปผล'}
+                                </button>
+                            </div>
                         </div>
 
-                        {/* Part Navigation */}
                         <div className="max-w-6xl mx-auto mt-3 overflow-x-auto flex gap-2 pb-1 scrollbar-hide">
                             {Object.keys(examData).map(key => (
                                 <button
                                     key={key}
-                                    onClick={() => {
-                                        setActivePart(key);
-                                        window.scrollTo({ top: 0 });
-                                    }}
-                                    className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
-                                        activePart === key 
-                                            ? 'bg-white text-indigo-900 shadow-md transform scale-105' 
-                                            : 'bg-black/20 hover:bg-black/30 text-white/90'
-                                    }`}
+                                    onClick={() => { setActivePart(key); window.scrollTo({ top: 0 }); }}
+                                    className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all ${activePart === key ? 'bg-white text-indigo-900 shadow-md transform scale-105' : 'bg-black/20 hover:bg-black/30 text-white/90'}`}
                                 >
                                     {key.replace('part', 'Part ')}
                                 </button>
@@ -442,136 +388,94 @@
                         </div>
                     </header>
 
-                    {/* Settings Bar */}
-                    <SettingsBar 
-                        settings={settings} 
-                        updateSettings={(newSets) => setSettings(prev => ({...prev, ...newSets}))} 
-                        isExamMode={isExamMode}
-                    />
-
-                    {/* Content */}
                     <main className="max-w-4xl mx-auto p-4 md:p-8">
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 md:p-8 mb-8">
-                            <h2 className="text-2xl font-bold text-gray-800 mb-2 border-b pb-4 border-gray-100">
-                                {examData[activePart].title}
-                            </h2>
-                            <p className="text-gray-500 mb-8 bg-gray-50 p-3 rounded-lg border-l-4 border-indigo-400">
-                                {examData[activePart].instruction}
-                            </p>
+                            <h2 className="text-2xl font-bold text-gray-800 mb-2 border-b pb-4 border-gray-100">{examData[activePart].title}</h2>
+                            <p className="text-gray-500 mb-8 bg-gray-50 p-3 rounded-lg border-l-4 border-indigo-400">{examData[activePart].instruction}</p>
 
                             <div className="space-y-8">
                                 {examData[activePart].questions.map((qData, idx) => (
-                                    <QuestionItem 
-                                        key={`${activePart}-${idx}`}
-                                        idx={idx}
-                                        partKey={activePart}
-                                        data={qData}
-                                        type={examData[activePart].type}
-                                        answer={userAnswers[`${activePart}-${idx}`] || ''}
-                                        onAnswer={(val) => setUserAnswers(prev => ({ ...prev, [`${activePart}-${idx}`]: val }))}
-                                        showInstantAnswer={!isExamMode}
-                                        settings={settings}
-                                    />
+                                    <div key={`${activePart}-${idx}`} className={`relative group ${settings.showFurigana ? '' : 'hide-furigana'}`}>
+                                        <div className="absolute -left-3 md:-left-8 top-1 font-bold text-gray-300 text-xl">{idx + 1}</div>
+                                        
+                                        {/* Question Render Logic */}
+                                        <div className="mb-4">
+                                            {examData[activePart].type === 'fill-in-inline' ? (
+                                                <InlineQuestionRenderer 
+                                                    questionText={qData.q}
+                                                    delimiter={examData[activePart].delimiter}
+                                                    questionId={`${activePart}-${idx}`}
+                                                    userAnswers={userAnswers}
+                                                    onAnswer={(slot, val) => setUserAnswers(prev => ({...prev, [`${activePart}-${idx}-slot-${slot}`]: val}))}
+                                                    showFurigana={settings.showFurigana}
+                                                    fontSizeClass={['text-base', 'text-xl', 'text-2xl'][settings.fontSize]}
+                                                    isDisabled={false}
+                                                />
+                                            ) : (
+                                                <p className={`${['text-base', 'text-xl', 'text-2xl'][settings.fontSize]} font-medium text-gray-800 jp-text leading-loose`}>
+                                                    <RubifiedText text={qData.q} showFurigana={settings.showFurigana} />
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        {/* Answer Input (for non-inline types) */}
+                                        {examData[activePart].type === 'multiple-choice' && (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                {qData.options.map((opt, optIdx) => (
+                                                    <button
+                                                        key={optIdx}
+                                                        onClick={() => setUserAnswers(prev => ({...prev, [`${activePart}-${idx}`]: optIdx}))}
+                                                        className={`p-3 text-left rounded-lg border-2 transition-all ${userAnswers[`${activePart}-${idx}`] === optIdx ? 'border-indigo-500 bg-indigo-50 text-indigo-900 font-medium shadow-sm' : 'border-gray-200 hover:border-gray-300 bg-white'}`}
+                                                    >
+                                                        <span className="mr-2 text-gray-400 font-bold">{String.fromCharCode(97 + optIdx)}.</span>
+                                                        <span className={['text-base', 'text-xl', 'text-2xl'][settings.fontSize]}>
+                                                            <RubifiedText text={opt} showFurigana={settings.showFurigana} />
+                                                        </span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                        
+                                        {examData[activePart].type === 'fill-in' && (
+                                            <textarea
+                                                value={userAnswers[`${activePart}-${idx}`] || ''}
+                                                onChange={(e) => setUserAnswers(prev => ({...prev, [`${activePart}-${idx}`]: e.target.value}))}
+                                                placeholder="พิมพ์คำตอบ..."
+                                                rows="2"
+                                                className={`w-full p-3 rounded-lg border-2 border-gray-200 focus:border-indigo-500 outline-none transition-colors bg-gray-50 focus:bg-white ${['text-base', 'text-xl', 'text-2xl'][settings.fontSize]} jp-text`}
+                                            />
+                                        )}
+
+                                        {/* Instant Answer (Practice Mode) */}
+                                        {!isExamMode && (
+                                            <PracticeAnswerReveal qData={qData} type={examData[activePart].type} settings={settings} />
+                                        )}
+                                    </div>
                                 ))}
                             </div>
                         </div>
 
-                        {/* Navigation Footer */}
                         <div className="flex justify-between">
-                             <button
-                                onClick={() => {
-                                    const keys = Object.keys(examData);
-                                    const prev = keys[keys.indexOf(activePart) - 1];
-                                    if(prev) { setActivePart(prev); window.scrollTo({top:0}); }
-                                }}
-                                disabled={activePart === 'part1'}
-                                className="px-6 py-3 bg-gray-200 text-gray-600 rounded-xl font-bold disabled:opacity-50"
-                            >
-                                &larr; ก่อนหน้า
-                            </button>
-                            <button
-                                onClick={() => {
-                                    const keys = Object.keys(examData);
-                                    const next = keys[keys.indexOf(activePart) + 1];
-                                    if(next) { setActivePart(next); window.scrollTo({top:0}); }
-                                }}
-                                disabled={activePart === 'part7'}
-                                className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg hover:bg-indigo-700 disabled:opacity-50"
-                            >
-                                ถัดไป &rarr;
-                            </button>
+                             <button onClick={() => { const keys = Object.keys(examData); const prev = keys[keys.indexOf(activePart) - 1]; if(prev) { setActivePart(prev); window.scrollTo({top:0}); }}} disabled={activePart === 'part1'} className="px-6 py-3 bg-gray-200 text-gray-600 rounded-xl font-bold disabled:opacity-50">&larr; ก่อนหน้า</button>
+                             <button onClick={() => { const keys = Object.keys(examData); const next = keys[keys.indexOf(activePart) + 1]; if(next) { setActivePart(next); window.scrollTo({top:0}); }}} disabled={activePart === 'part7'} className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg hover:bg-indigo-700 disabled:opacity-50">ถัดไป &rarr;</button>
                         </div>
                     </main>
                 </div>
             );
         };
 
-        const QuestionItem = ({ idx, partKey, data, type, answer, onAnswer, showInstantAnswer, settings }) => {
+        const PracticeAnswerReveal = ({ qData, type, settings }) => {
             const [revealed, setRevealed] = useState(false);
-            
-            // Dynamic classes based on font size setting
-            const fontSizes = ['text-base', 'text-xl', 'text-2xl'];
-            const currentSize = fontSizes[settings.fontSize];
-
             return (
-                <div className={`relative group ${settings.showFurigana ? '' : 'hide-furigana'}`}>
-                    <div className="absolute -left-3 md:-left-8 top-1 font-bold text-gray-300 text-xl">{idx + 1}</div>
-                    <div className="mb-4">
-                        <p className={`${currentSize} font-medium text-gray-800 jp-text leading-loose`}>
-                            <RubifiedText text={data.q} showFurigana={settings.showFurigana} />
-                        </p>
-                    </div>
-
-                    {type === 'multiple-choice' ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {data.options.map((opt, optIdx) => (
-                                <button
-                                    key={optIdx}
-                                    onClick={() => onAnswer(optIdx)}
-                                    className={`p-3 text-left rounded-lg border-2 transition-all ${
-                                        answer === optIdx 
-                                            ? 'border-indigo-500 bg-indigo-50 text-indigo-900 font-medium shadow-sm' 
-                                            : 'border-gray-200 hover:border-gray-300 bg-white'
-                                    }`}
-                                >
-                                    <span className="mr-2 text-gray-400 font-bold">{String.fromCharCode(97 + optIdx)}.</span>
-                                    <span className={currentSize}>
-                                        <RubifiedText text={opt} showFurigana={settings.showFurigana} />
-                                    </span>
-                                </button>
-                            ))}
-                        </div>
-                    ) : (
-                        <textarea
-                            value={answer}
-                            onChange={(e) => onAnswer(e.target.value)}
-                            placeholder="พิมพ์คำตอบ..."
-                            rows="2"
-                            className={`w-full p-3 rounded-lg border-2 border-gray-200 focus:border-indigo-500 outline-none transition-colors bg-gray-50 focus:bg-white ${currentSize} jp-text`}
-                        />
-                    )}
-
-                    {/* Instant Answer Reveal (Practice Mode Only) */}
-                    {showInstantAnswer && (
-                        <div className="mt-3">
-                            <button 
-                                onClick={() => setRevealed(!revealed)}
-                                className="text-sm text-indigo-500 hover:text-indigo-700 font-medium flex items-center gap-1"
-                            >
-                                <Icons.Eye /> {revealed ? 'ซ่อนเฉลย' : 'ดูเฉลย'}
-                            </button>
-                            
-                            {revealed && (
-                                <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-800 animate-in fade-in slide-in-from-top-1">
-                                    <span className="font-bold text-xs uppercase tracking-wide text-green-600 block mb-1">เฉลย:</span>
-                                    {type === 'multiple-choice' ? (
-                                        <span>
-                                            ข้อ {String.fromCharCode(97 + data.a)}: <strong>{data.options[data.a]}</strong>
-                                        </span>
-                                    ) : (
-                                        <span className={`jp-text font-medium ${currentSize}`}>{data.a}</span>
-                                    )}
-                                </div>
+                <div className="mt-3">
+                    <button onClick={() => setRevealed(!revealed)} className="text-sm text-indigo-500 hover:text-indigo-700 font-medium flex items-center gap-1"><Icons.Eye /> {revealed ? 'ซ่อนเฉลย' : 'ดูเฉลย'}</button>
+                    {revealed && (
+                        <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-800 animate-in fade-in slide-in-from-top-1">
+                            <span className="font-bold text-xs uppercase tracking-wide text-green-600 block mb-1">เฉลย:</span>
+                            {type === 'multiple-choice' ? (
+                                <span>ข้อ {String.fromCharCode(97 + qData.a)}: <strong>{qData.options[qData.a]}</strong></span>
+                            ) : (
+                                <span className={`jp-text font-medium ${['text-base', 'text-xl', 'text-2xl'][settings.fontSize]}`}>{qData.a}</span>
                             )}
                         </div>
                     )}
@@ -579,43 +483,16 @@
             );
         };
 
-        // 5. RESULT SUMMARY
         const ResultSummary = ({ examData, userAnswers, onRestart }) => {
-            let mcScore = 0;
-            let mcTotal = 0;
-            if (examData.part7) {
-                mcTotal = examData.part7.questions.length;
-                examData.part7.questions.forEach((q, idx) => {
-                    if (userAnswers[`part7-${idx}`] === q.a) mcScore++;
-                });
-            }
-
+            const [settings, setSettings] = useState({ fontSize: 1, showFurigana: true });
+            
             return (
                 <div className="min-h-screen bg-gray-50 p-4 md:p-8">
                     <div className="max-w-4xl mx-auto">
                         <div className="bg-white rounded-2xl shadow-xl p-8 mb-8 text-center">
-                            <h2 className="text-3xl font-bold text-gray-800 mb-4">สรุปผลการทำข้อสอบ</h2>
-                            
-                            <div className="inline-block bg-indigo-50 px-8 py-6 rounded-2xl border border-indigo-100">
-                                <p className="text-gray-500 uppercase tracking-wide text-sm font-bold mb-2">คะแนน Part 7 (ปรนัย)</p>
-                                <div className="text-5xl font-bold text-indigo-600 mb-1">
-                                    {mcScore} <span className="text-2xl text-gray-400">/ {mcTotal}</span>
-                                </div>
-                                <div className="w-full bg-gray-200 h-2 rounded-full mt-2 overflow-hidden">
-                                    <div className="bg-indigo-500 h-full" style={{ width: `${(mcScore/mcTotal)*100}%` }}></div>
-                                </div>
-                            </div>
-                            
-                            <p className="mt-6 text-gray-600">
-                                สำหรับ Part 1-6 โปรดตรวจสอบคำตอบของท่านเทียบกับเฉลยด้านล่าง
-                            </p>
-                            
-                            <button 
-                                onClick={onRestart}
-                                className="mt-8 px-8 py-3 bg-gray-800 hover:bg-black text-white rounded-lg font-bold shadow-lg transition-transform hover:-translate-y-1"
-                            >
-                                กลับไปหน้าเมนูหลัก
-                            </button>
+                            <h2 className="text-3xl font-bold text-gray-800 mb-4">จบการทดสอบ / สรุปผล</h2>
+                            <p className="text-gray-600 mb-6">กรุณาตรวจสอบคำตอบด้วยตนเองจากเฉลยด้านล่าง</p>
+                            <button onClick={onRestart} className="px-8 py-3 bg-gray-800 hover:bg-black text-white rounded-lg font-bold shadow-lg transition-transform hover:-translate-y-1">กลับไปหน้าเมนูหลัก</button>
                         </div>
 
                         <div className="space-y-8">
@@ -623,32 +500,46 @@
                                 <div key={partKey} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                                     <div className="bg-gray-100 px-6 py-4 border-b border-gray-200 font-bold text-gray-700 flex justify-between items-center">
                                         <span>{partData.title}</span>
-                                        <span className="text-xs bg-gray-200 px-2 py-1 rounded text-gray-500">
-                                            {partData.questions.length} ข้อ
-                                        </span>
+                                        <span className="text-xs bg-gray-200 px-2 py-1 rounded text-gray-500">{partData.questions.length} ข้อ</span>
                                     </div>
                                     <div className="p-6 space-y-6">
                                         {partData.questions.map((q, idx) => {
-                                            const uAns = userAnswers[`${partKey}-${idx}`];
                                             const isMc = partData.type === 'multiple-choice';
-                                            const isCorrect = isMc && uAns === q.a;
-
+                                            const uAns = userAnswers[`${partKey}-${idx}`];
+                                            
                                             return (
-                                                <div key={idx} className={`border-l-4 pl-4 ${isMc ? (isCorrect ? 'border-green-400' : 'border-red-400') : 'border-blue-300'}`}>
-                                                    <p className="font-medium text-gray-800 mb-2 jp-text">
-                                                        <RubifiedText text={q.q} showFurigana={true} />
-                                                    </p>
-                                                    
-                                                    <div className="text-sm mb-1">
-                                                        <span className="text-gray-500">ตอบ: </span>
-                                                        <span className={`font-medium ${isMc ? (isCorrect ? 'text-green-600' : 'text-red-600') : 'text-gray-800'}`}>
-                                                            {isMc 
-                                                                ? (uAns !== undefined ? <RubifiedText text={q.options[uAns]} showFurigana={true} /> : '-') 
-                                                                : (uAns || '-')}
-                                                        </span>
+                                                <div key={idx} className={`border-l-4 pl-4 ${isMc ? (uAns === q.a ? 'border-green-400' : 'border-red-400') : 'border-blue-300'} ${settings.showFurigana ? '' : 'hide-furigana'}`}>
+                                                    <div className="mb-2">
+                                                        {partData.type === 'fill-in-inline' ? (
+                                                            <InlineQuestionRenderer 
+                                                                questionText={q.q}
+                                                                delimiter={partData.delimiter}
+                                                                questionId={`${partKey}-${idx}`}
+                                                                userAnswers={userAnswers}
+                                                                onAnswer={() => {}} // Read-only
+                                                                showFurigana={settings.showFurigana}
+                                                                fontSizeClass={['text-base', 'text-xl', 'text-2xl'][settings.fontSize]}
+                                                                isDisabled={true}
+                                                            />
+                                                        ) : (
+                                                            <p className="font-medium text-gray-800 jp-text"><RubifiedText text={q.q} showFurigana={true} /></p>
+                                                        )}
                                                     </div>
+                                                    
+                                                    {isMc ? (
+                                                        <div className="text-sm mb-1">
+                                                            <span className="text-gray-500">ตอบ: </span>
+                                                            <span className={`font-medium ${uAns === q.a ? 'text-green-600' : 'text-red-600'}`}>
+                                                                {uAns !== undefined ? <RubifiedText text={q.options[uAns]} showFurigana={true} /> : '-'}
+                                                            </span>
+                                                        </div>
+                                                    ) : partData.type === 'fill-in' && (
+                                                        <div className="text-sm mb-1 text-gray-600">
+                                                            <span>ตอบ: {uAns || '-'}</span>
+                                                        </div>
+                                                    )}
 
-                                                    <div className="text-sm bg-green-50 p-2 rounded text-green-800 inline-block">
+                                                    <div className="text-sm bg-green-50 p-2 rounded text-green-800 inline-block mt-1">
                                                         <span className="font-bold">เฉลย: </span>
                                                         {isMc ? <RubifiedText text={q.options[q.a]} showFurigana={true} /> : q.a}
                                                     </div>
@@ -664,29 +555,23 @@
             );
         };
 
-        // MAIN APP CONTAINER
         const App = () => {
-            const [gameState, setGameState] = useState('menu'); // menu, exam, result
-            const [mode, setMode] = useState(null); // exam, practice_all, practice_random
+            const [gameState, setGameState] = useState('menu');
+            const [mode, setMode] = useState(null);
             const [currentExamData, setCurrentExamData] = useState(null);
             const [finalAnswers, setFinalAnswers] = useState({});
 
             const startExam = (selectedMode) => {
                 let data = {};
-                
                 if (selectedMode === 'practice_all') {
                     data = QUESTION_POOL;
                 } else {
                     Object.keys(QUESTION_POOL).forEach(key => {
                         const pool = QUESTION_POOL[key];
                         const count = EXAM_CONFIG.counts[key] || 5;
-                        data[key] = {
-                            ...pool,
-                            questions: getRandomQuestions(pool.questions, count)
-                        };
+                        data[key] = { ...pool, questions: getRandomQuestions(pool.questions, count) };
                     });
                 }
-
                 setCurrentExamData(data);
                 setMode(selectedMode);
                 setGameState('exam');
@@ -703,7 +588,6 @@
             if (gameState === 'menu') return <MenuScreen onStart={startExam} />;
             if (gameState === 'exam') return <ExamInterface mode={mode} examData={currentExamData} onFinish={finishExam} />;
             if (gameState === 'result') return <ResultSummary examData={currentExamData} userAnswers={finalAnswers} onRestart={() => setGameState('menu')} />;
-            
             return null;
         };
 
