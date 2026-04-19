@@ -12,14 +12,13 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   
-  <!-- โหลด Babel สำหรับแปลง JSX ให้ทำงานบนเบราว์เซอร์ได้โดยตรง -->
+  <!-- โหลด Babel -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  <!-- โหลด html2canvas สำหรับทำฟังก์ชันดาวน์โหลดรูปภาพ -->
+  <!-- โหลด html2canvas -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   
   <style>
-    /* ซ่อน Scrollbar เพื่อความสวยงาม แต่ยังเลื่อนได้ปกติ */
     ::-webkit-scrollbar { width: 8px; }
     ::-webkit-scrollbar-track { background: #f1f1f1; }
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
@@ -30,7 +29,6 @@
 
   <div id="root"></div>
 
-  <!-- ส่วนของ React Component -->
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
 
@@ -38,12 +36,10 @@
       // --- Script Loading State ---
       const [isReadyToCapture, setIsReadyToCapture] = useState(false);
 
-      // ตรวจสอบ html2canvas
       useEffect(() => {
         if (window.html2canvas) {
           setIsReadyToCapture(true);
         } else {
-          // Fallback เผื่อโหลดไม่ติดจาก <head>
           const script = document.createElement('script');
           script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
           script.async = true;
@@ -70,12 +66,15 @@
       const [ePayments, setEPayments] = useState({ truewallet: '', wechat: '', alipay: '', alipayPlus: '', creditCard: '' });
       const [otherServices, setOtherServices] = useState({ topupTrueWallet: '', bankDeposit: '', billPayment: '', other: '' });
 
+      // --- UI & Storage States ---
       const [isDownloading, setIsDownloading] = useState(false);
       const [showHistory, setShowHistory] = useState(false);
+      const [showAccumulator, setShowAccumulator] = useState(false);
       const [savedLogs, setSavedLogs] = useState([]);
+      const [dailyLogs, setDailyLogs] = useState([]); // เก็บประวัติการสะสมยอดระหว่างวัน
       const surveyRef = useRef(null);
 
-      // Load History & Current Shift State
+      // Load Storage
       useEffect(() => {
         const logs = JSON.parse(localStorage.getItem('posShiftLogs') || '[]');
         setSavedLogs(logs);
@@ -85,7 +84,31 @@
           setShiftActive(true);
           setStartingCashAmount(currentShift.startingCash);
         }
+
+        const dLogs = JSON.parse(localStorage.getItem('posDailyLogs') || '[]');
+        setDailyLogs(dLogs);
       }, []);
+
+      // --- Accumulator States (สำหรับหน้าจอคีย์ยอดสะสม) ---
+      const [accPayType, setAccPayType] = useState('epayment_truewallet');
+      const [accPayAmount, setAccPayAmount] = useState('');
+      
+      const [accSrvType, setAccSrvType] = useState('other_bankDeposit');
+      const [accSrvAmount, setAccSrvAmount] = useState('');
+
+      const typeLabels = {
+        'system_cashSales': 'ยอดขายเงินสด',
+        'epayment_truewallet': 'TrueWallet',
+        'epayment_wechat': 'WeChat Pay',
+        'epayment_alipay': 'Alipay',
+        'epayment_alipayPlus': 'Alipay+',
+        'epayment_creditCard': 'บัตรเครดิต',
+        'system_depositServices': 'บริการฝากเงิน (เข้าระบบ)',
+        'other_topupTrueWallet': 'เติมเงิน TrueWallet',
+        'other_bankDeposit': 'ฝากเงินธนาคาร',
+        'other_billPayment': 'จ่ายบิล',
+        'other_other': 'บริการอื่นๆ'
+      };
 
       // --- Calculations ---
       const systemExpected = startingCashAmount + (parseFloat(systemData.cashSales) || 0) + (parseFloat(systemData.depositServices) || 0);
@@ -125,6 +148,49 @@
 
       const formatCurrency = (amount) => new Intl.NumberFormat('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
 
+      // --- Accumulator Handlers ---
+      const addAccumulatorLog = (typeString, amountStr, setAmountInput) => {
+        const amount = parseFloat(amountStr);
+        if (isNaN(amount) || amount <= 0) return;
+
+        const [group, field] = typeString.split('_');
+        const label = typeLabels[typeString];
+        const newLog = { id: Date.now(), group, field, label, amount, timestamp: new Date().toLocaleTimeString('th-TH') };
+        
+        const updatedLogs = [newLog, ...dailyLogs];
+        setDailyLogs(updatedLogs);
+        localStorage.setItem('posDailyLogs', JSON.stringify(updatedLogs));
+
+        // อัปเดตยอดลงในหน้าหลักอัตโนมัติ
+        if (group === 'system') setSystemData(p => ({ ...p, [field]: (parseFloat(p[field]) || 0) + amount }));
+        if (group === 'epayment') setEPayments(p => ({ ...p, [field]: (parseFloat(p[field]) || 0) + amount }));
+        if (group === 'other') setOtherServices(p => ({ ...p, [field]: (parseFloat(p[field]) || 0) + amount }));
+
+        setAmountInput(''); // เคลียร์ช่องพิมพ์
+      };
+
+      const removeAccumulatorLog = (logId) => {
+        const logToRemove = dailyLogs.find(l => l.id === logId);
+        if (!logToRemove) return;
+
+        const updatedLogs = dailyLogs.filter(l => l.id !== logId);
+        setDailyLogs(updatedLogs);
+        localStorage.setItem('posDailyLogs', JSON.stringify(updatedLogs));
+
+        // หักยอดออกจากหน้าหลัก
+        const { group, field, amount } = logToRemove;
+        const subtract = (prev) => {
+          let current = parseFloat(prev[field]) || 0;
+          let result = Math.max(0, current - amount);
+          return { ...prev, [field]: result === 0 ? '' : result };
+        };
+
+        if (group === 'system') setSystemData(subtract);
+        if (group === 'epayment') setEPayments(subtract);
+        if (group === 'other') setOtherServices(subtract);
+      };
+
+      // --- System Flow Handlers ---
       const handleSaveToLocal = () => {
         if (window.confirm('ต้องการบันทึกข้อมูลการตรวจนับนี้ลงในประวัติใช่หรือไม่?')) {
           const newLog = {
@@ -148,7 +214,11 @@
           setStartingCashAmount(actualTotal);
           setShiftActive(true);
           localStorage.setItem('posCurrentShift', JSON.stringify({ active: true, startingCash: actualTotal }));
-          resetInputs(); // ล้างช่องนับเงินเพื่อให้พร้อมสำหรับการนับปิดกะ
+          
+          resetInputs(); 
+          setDailyLogs([]); // ล้างประวัติสะสมยอดสำหรับกะใหม่
+          localStorage.removeItem('posDailyLogs');
+          
           alert('✅ เริ่มกะสำเร็จ! ระบบบันทึกยอดเงินทอนเริ่มต้นไว้แล้ว');
         }
       };
@@ -165,11 +235,12 @@
           localStorage.setItem('posShiftLogs', JSON.stringify(updatedLogs));
           setSavedLogs(updatedLogs);
           
-          // เคลียร์สถานะกะ
           setShiftActive(false);
           setStartingCashAmount(0);
           localStorage.removeItem('posCurrentShift');
           resetInputs();
+          setDailyLogs([]);
+          localStorage.removeItem('posDailyLogs');
           
           alert('💾 บันทึกปิดกะสำเร็จ! สามารถดูประวัติได้ที่ปุ่ม "ดูประวัติ"');
         }
@@ -204,22 +275,33 @@
 
       return (
         <div className="min-h-screen p-2 sm:p-4 font-sans text-gray-800 pb-24">
+          
+          {/* Header */}
           <div className="max-w-7xl mx-auto mb-4 flex flex-col sm:flex-row justify-between items-center bg-white p-4 rounded-lg shadow border border-gray-200">
             <div>
               <h1 className="text-2xl font-bold text-blue-800">🧾 ระบบสรุปยอดสิ้นกะ (Shift Survey)</h1>
-              <p className="text-sm text-gray-500 mt-1">พร้อมระบบบันทึก Log ธุรกรรมอื่นๆ (ไม่กระทบเงินสด)</p>
+              <p className="text-sm text-gray-500 mt-1">พร้อมระบบสะสมยอดและบันทึก Log ธุรกรรม</p>
             </div>
-            <div className="mt-4 sm:mt-0 flex gap-2 w-full sm:w-auto">
+            <div className="mt-4 sm:mt-0 flex flex-wrap gap-2 w-full sm:w-auto justify-end">
               <button onClick={() => setShowHistory(true)} className="flex-1 sm:flex-none bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-4 py-2 rounded-lg font-bold border border-indigo-300 transition-colors">
                 🕒 ดูประวัติ
               </button>
+              
+              {/* ปุ่มเปิดหน้าสะสมยอด (แสดงเฉพาะตอนเปิดกะแล้ว) */}
+              {shiftActive && (
+                <button onClick={() => setShowAccumulator(true)} className="flex-1 sm:flex-none bg-yellow-400 hover:bg-yellow-500 text-yellow-900 px-4 py-2 rounded-lg font-bold shadow transition-colors flex items-center justify-center gap-1 border border-yellow-500">
+                  <span>📝</span> สะสมยอดระหว่างวัน
+                </button>
+              )}
+
               <button onClick={handleSaveToLocal} className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold shadow transition-colors">
                 💾 บันทึกประวัติ
               </button>
               {shiftActive && (
                 <button onClick={() => {
                   if(window.confirm('ต้องการยกเลิกกะที่กำลังทำงานอยู่ใช่หรือไม่? ข้อมูลที่บันทึกจะหายไป')) {
-                    setShiftActive(false); setStartingCashAmount(0); localStorage.removeItem('posCurrentShift'); resetInputs();
+                    setShiftActive(false); setStartingCashAmount(0); localStorage.removeItem('posCurrentShift'); 
+                    resetInputs(); setDailyLogs([]); localStorage.removeItem('posDailyLogs');
                   }
                 }} className="flex-1 sm:flex-none bg-red-100 hover:bg-red-200 text-red-700 px-4 py-2 rounded-lg font-bold border border-red-300 transition-colors">
                   ยกเลิกกะ
@@ -228,11 +310,121 @@
             </div>
           </div>
 
+          {/* Modal: หน้าสะสมยอดระหว่างวัน (Accumulator) */}
+          {showAccumulator && (
+            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-2 sm:p-4">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+                <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-yellow-50 rounded-t-xl">
+                  <div>
+                    <h2 className="text-xl font-bold text-yellow-800">📝 จดสะสมยอดระหว่างกะ</h2>
+                    <p className="text-xs text-yellow-700 mt-1">คีย์บิลที่นี่ ยอดจะถูกบวกเข้าหน้าสรุปอัตโนมัติ</p>
+                  </div>
+                  <button onClick={() => setShowAccumulator(false)} className="text-gray-500 hover:text-red-500 font-bold text-2xl px-2">&times;</button>
+                </div>
+                
+                <div className="p-4 overflow-y-auto flex-1 space-y-6 bg-gray-50">
+                  
+                  {/* กรอกสะสมยอด */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    
+                    {/* หมวด: จ่ายโดย */}
+                    <div className="bg-white p-4 rounded-lg shadow-sm border border-purple-200">
+                      <h3 className="font-bold text-purple-800 mb-3 border-b pb-2">💳 หมวด: จ่ายโดย... (Payments)</h3>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">ประเภทการจ่าย</label>
+                          <select className="w-full p-2 border border-gray-300 rounded focus:ring-purple-500 focus:border-purple-500 bg-white" value={accPayType} onChange={e => setAccPayType(e.target.value)}>
+                            <option value="epayment_truewallet">TrueWallet</option>
+                            <option value="epayment_alipay">Alipay</option>
+                            <option value="epayment_alipayPlus">Alipay+</option>
+                            <option value="epayment_wechat">WeChat Pay</option>
+                            <option value="epayment_creditCard">บัตรเครดิต</option>
+                            <option value="system_cashSales">ยอดขายเงินสด (หากต้องการสะสมมือ)</option>
+                          </select>
+                        </div>
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">จำนวนเงิน</label>
+                            <input type="number" placeholder="0.00" className="w-full p-2 border border-gray-300 rounded text-right font-bold focus:ring-2 focus:ring-purple-500 outline-none" value={accPayAmount} onChange={e => setAccPayAmount(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addAccumulatorLog(accPayType, accPayAmount, setAccPayAmount)} />
+                          </div>
+                          <div className="flex items-end">
+                            <button onClick={() => addAccumulatorLog(accPayType, accPayAmount, setAccPayAmount)} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded shadow">บวกเพิ่ม</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* หมวด: ฝาก/บริการ */}
+                    <div className="bg-white p-4 rounded-lg shadow-sm border border-pink-200">
+                      <h3 className="font-bold text-pink-800 mb-3 border-b pb-2">🏧 หมวด: ฝากและบริการ (Services)</h3>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">ประเภทบริการ</label>
+                          <select className="w-full p-2 border border-gray-300 rounded focus:ring-pink-500 focus:border-pink-500 bg-white" value={accSrvType} onChange={e => setAccSrvType(e.target.value)}>
+                            <option value="other_bankDeposit">ฝากเงินธนาคาร</option>
+                            <option value="other_topupTrueWallet">เติมเงิน TrueWallet</option>
+                            <option value="other_billPayment">จ่ายบิลต่างๆ</option>
+                            <option value="system_depositServices">บริการฝากเงิน (เข้ายอดระบบ)</option>
+                            <option value="other_other">บริการอื่นๆ</option>
+                          </select>
+                        </div>
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">จำนวนเงิน</label>
+                            <input type="number" placeholder="0.00" className="w-full p-2 border border-gray-300 rounded text-right font-bold focus:ring-2 focus:ring-pink-500 outline-none" value={accSrvAmount} onChange={e => setAccSrvAmount(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addAccumulatorLog(accSrvType, accSrvAmount, setAccSrvAmount)} />
+                          </div>
+                          <div className="flex items-end">
+                            <button onClick={() => addAccumulatorLog(accSrvType, accSrvAmount, setAccSrvAmount)} className="bg-pink-600 hover:bg-pink-700 text-white font-bold py-2 px-4 rounded shadow">บวกเพิ่ม</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+
+                  {/* ประวัติการจดสะสมล่าสุด */}
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                    <div className="bg-gray-100 px-4 py-2 font-bold text-gray-700 border-b flex justify-between">
+                      <span>ประวัติการบวกยอดรอบนี้</span>
+                      <span className="text-blue-600">รวม {dailyLogs.length} รายการ</span>
+                    </div>
+                    <div className="max-h-48 overflow-y-auto p-2">
+                      {dailyLogs.length === 0 ? (
+                        <div className="text-center text-gray-400 py-4 text-sm">ยังไม่มีการสะสมยอด</div>
+                      ) : (
+                        <ul className="divide-y divide-gray-100">
+                          {dailyLogs.map((log) => (
+                            <li key={log.id} className="flex justify-between items-center py-2 px-2 hover:bg-gray-50">
+                              <div>
+                                <span className="text-xs text-gray-400 w-16 inline-block">{log.timestamp}</span>
+                                <span className="font-semibold text-gray-700 ml-2">{log.label}</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="font-bold text-blue-600">฿{formatCurrency(log.amount)}</span>
+                                <button onClick={() => removeAccumulatorLog(log.id)} className="text-red-500 hover:bg-red-50 px-2 py-1 rounded text-xs border border-red-200">ลบ/คืนค่า</button>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+
+                </div>
+                
+                <div className="p-4 border-t bg-white rounded-b-xl flex justify-end">
+                  <button onClick={() => setShowAccumulator(false)} className="bg-gray-800 hover:bg-gray-700 text-white px-6 py-2 rounded-lg font-bold">ปิดหน้าต่างนี้ (ยอดบันทึกไปแล้ว)</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal: History */}
           {showHistory && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col">
                 <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
-                  <h2 className="text-xl font-bold text-gray-800">🕒 ประวัติการบันทึก (Shift History)</h2>
+                  <h2 className="text-xl font-bold text-gray-800">🕒 ประวัติการบันทึกปิดกะ (Shift History)</h2>
                   <button onClick={() => setShowHistory(false)} className="text-gray-500 hover:text-red-500 font-bold text-xl px-2">&times;</button>
                 </div>
                 <div className="p-4 overflow-y-auto flex-1">
@@ -271,6 +463,7 @@
             </div>
           )}
 
+          {/* Main Content Area */}
           <div ref={surveyRef} className="pb-4 bg-gray-100">
             <div className="max-w-7xl mx-auto grid grid-cols-1 xl:grid-cols-4 gap-4">
               
@@ -318,7 +511,7 @@
                         {[{ id: 'truewallet', label: 'TrueWallet' }, { id: 'wechat', label: 'WeChat Pay' }, { id: 'alipay', label: 'Alipay' }, { id: 'alipayPlus', label: 'Alipay+' }, { id: 'creditCard', label: 'บัตรเครดิต' }].map(item => (
                           <div key={item.id} className="flex items-center justify-between">
                             <label className="text-sm font-semibold text-gray-600">{item.label}</label>
-                            <input type="number" className="w-28 p-1.5 border border-purple-200 rounded focus:ring-2 focus:ring-purple-500 outline-none text-right text-sm" placeholder="0.00" value={ePayments[item.id]} onChange={(e) => handleInputChange(setEPayments)(item.id, e.target.value)} />
+                            <input type="number" className="w-28 p-1.5 border border-purple-200 rounded focus:ring-2 focus:ring-purple-500 outline-none text-right text-sm font-medium" placeholder="0" value={ePayments[item.id]} onChange={(e) => handleInputChange(setEPayments)(item.id, e.target.value)} />
                           </div>
                         ))}
                       </div>
@@ -330,7 +523,7 @@
                         {[{ id: 'topupTrueWallet', label: 'เติมเงิน TrueWallet' }, { id: 'bankDeposit', label: 'ฝากเงินธนาคาร' }, { id: 'billPayment', label: 'จ่ายบิล' }, { id: 'other', label: 'อื่นๆ' }].map(item => (
                           <div key={item.id} className="flex items-center justify-between">
                             <label className="text-sm font-semibold text-gray-600">{item.label}</label>
-                            <input type="number" className="w-28 p-1.5 border border-pink-200 rounded focus:ring-2 focus:ring-pink-500 outline-none text-right text-sm" placeholder="0.00" value={otherServices[item.id]} onChange={(e) => handleInputChange(setOtherServices)(item.id, e.target.value)} />
+                            <input type="number" className="w-28 p-1.5 border border-pink-200 rounded focus:ring-2 focus:ring-pink-500 outline-none text-right text-sm font-medium" placeholder="0" value={otherServices[item.id]} onChange={(e) => handleInputChange(setOtherServices)(item.id, e.target.value)} />
                           </div>
                         ))}
                       </div>
@@ -399,7 +592,7 @@
                     <div className="grid grid-cols-3 text-xs font-bold text-gray-500 mb-1 px-1"><div>ช่อง</div><div className="text-center">ใบ/มัด</div><div className="text-right">รวม</div></div>
                     {tidelTubesConfig.map((tube, index) => (
                       <div key={tube.id} className="grid grid-cols-3 items-center gap-2">
-                        <div className="font-bold text-emerald-700 text-sm"><span className="text-[10px] text-gray-400 block -mb-1">#{index + 1}</span>{tube.label} (x{tube.multiplier})</div>
+                        <div className="font-bold text-emerald-700 text-sm"><span className="text-[10px] text-gray-400 block -mb-1">#{index + 1}</span>{tube.label} <span className="text-[10px]">(x{tube.multiplier})</span></div>
                         <input type="number" className="w-full p-1 border border-gray-300 rounded text-center focus:ring-2 focus:ring-emerald-500 outline-none text-sm" placeholder="0" value={tidel[tube.id]} onChange={(e) => handleInputChange(setTidel)(tube.id, e.target.value)} />
                         <div className="text-right font-medium text-gray-700 text-sm">{formatCurrency(tube.multiplier * (parseInt(tidel[tube.id]) || 0))}</div>
                       </div>
