@@ -8,6 +8,7 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <style>
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f1f5f9; overscroll-behavior-y: auto; }
     /* สีของธนบัตรและเหรียญ */
@@ -48,10 +49,10 @@
       }); 
       
       const [underMachine, setUnderMachine] = useState(''); 
-      const [draftedTotal, setDraftedTotal] = useState(0); // เก็บยอดเงินที่ถูกดราฟลงเซฟไปแล้ว
+      const [draftedTotal, setDraftedTotal] = useState(0); 
       const [logs, setLogs] = useState([]);
 
-      // --- Tracking Movements (นับยอดรับ/ทอนบิลล่าสุด) ---
+      // --- Tracking Movements ---
       const [movements, setMovements] = useState({ pos1: {...defaultDrawer}, pos2: {...defaultDrawer} });
 
       const denoms = [1000, 500, 100, 50, 20, 10, 5, 2, 1, 0.5, 0.25];
@@ -72,7 +73,7 @@
         if(val === 20) return 'bg-b20'; return 'bg-coin';
       };
 
-      // --- Business Logic State (Summary & Reference) ---
+      // --- Business Logic State ---
       const [baseline, setBaseline] = useState(null); 
       const [salesTotal, setSalesTotal] = useState(0);
       const [depositTotal, setDepositTotal] = useState(0);
@@ -89,13 +90,15 @@
       const [pauseIn, setPauseIn] = useState('');
       const [pauseOut, setPauseOut] = useState('');
 
-      // --- Count Tab (Dropdown States) ---
+      // --- Count Tab ---
       const [countSections, setCountSections] = useState({ pos1: true, pos2: false, tidel: false, under: false });
       const toggleCountSection = (sec) => setCountSections(prev => ({ ...prev, [sec]: !prev[sec] }));
       const [focusValTracker, setFocusValTracker] = useState(0); 
 
-      // --- Sync Feature ---
+      // --- Sync & Export ---
       const fileInputRef = useRef(null);
+      const summaryRef = useRef(null);
+      const [isDownloading, setIsDownloading] = useState(false);
 
       // --- Calculations ---
       const calcTotal = (obj) => Object.entries(obj).reduce((sum, [val, qty]) => sum + (parseFloat(val) * (qty||0)), 0);
@@ -106,13 +109,40 @@
       const tidelTotal = tidelTubesConfig.reduce((sum, tube) => sum + ((tidel[tube.id] || 0) * tube.val), 0);
       const underTotal = parseFloat(underMachine) || 0;
       
-      // รวมยอดทั้งหมด (ลิ้นชัก + Tidel + ใต้เครื่อง + ยอดที่ดราฟเข้าเซฟไปแล้ว)
       const grandTotal = pos1Total + pos2Total + tidelTotal + underTotal + draftedTotal;
       const expectedTotal = (baseline || 0) + salesTotal + depositTotal + breakAdjustments;
       const variance = baseline !== null ? grandTotal - expectedTotal : 0;
 
       const addLog = (msg) => {
         setLogs(prev => [{ time: new Date().toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit', second:'2-digit'}), msg }, ...prev].slice(0, 100));
+      };
+
+      // --- Image Download Handler ---
+      const downloadSummaryImage = async () => {
+        if (!summaryRef.current) return;
+        if (!window.html2canvas) {
+          alert('กรุณารอสักครู่ ระบบกำลังโหลดส่วนขยายรูปภาพ');
+          return;
+        }
+        setIsDownloading(true);
+        try {
+          const canvas = await window.html2canvas(summaryRef.current, {
+            scale: 2,
+            backgroundColor: '#ffffff',
+            useCORS: true
+          });
+          const image = canvas.toDataURL('image/png');
+          const link = document.createElement('a');
+          link.href = image;
+          link.download = `POS_Summary_${new Date().getTime()}.png`;
+          link.click();
+          addLog('📸 บันทึกรูปภาพใบสรุปเรียบร้อย');
+        } catch (error) {
+          console.error(error);
+          alert('เกิดข้อผิดพลาดในการสร้างรูปภาพ');
+        } finally {
+          setIsDownloading(false);
+        }
       };
 
       // --- Action Handlers ---
@@ -122,13 +152,12 @@
         
         const updateFn = (prev) => {
           const currentQty = prev[val] || 0;
-          return { ...prev, [val]: currentQty + (isReceive ? 1 : -1) }; // ยอมให้ยอดติดลบได้เลย
+          return { ...prev, [val]: currentQty + (isReceive ? 1 : -1) };
         };
 
         if (activePos === 'pos1') setPos1(updateFn);
         else setPos2(updateFn);
 
-        // จดจำความเคลื่อนไหว (ถ้าเป็นบิลใหม่ ให้ล้างค่าเก่าทิ้งก่อน)
         setMovements(prev => {
           const baseMov = isNewTx ? { pos1: {...defaultDrawer}, pos2: {...defaultDrawer} } : { ...prev };
           return {
@@ -161,7 +190,6 @@
            return next;
         };
 
-        // คืนค่า Movement ด้วย
         setMovements(prev => {
            const nextMov = { ...prev[activePos] };
            Object.entries(currentTxDetails.receive).forEach(([val, qty]) => nextMov[val] -= qty);
@@ -188,7 +216,6 @@
           const typeLabel = txType === 'sales' ? 'ยอดขาย' : 'ยอดฝาก';
           addLog(`✅ จบบิล (${typeLabel}): รับ ฿${currentTx.receive} [${rxDet||'-'}] | ทอน ฿${currentTx.change} [${chDet||'-'}]`);
         }
-        // สังเกตว่าเราไม่เคลียร์ movements ที่นี่ เพื่อให้ยังมองเห็นผลต่างจนกว่าจะกดเริ่มบิลใหม่
         setCurrentTx({ receive: 0, change: 0 });
         setCurrentTxDetails({ receive: {}, change: {} });
       };
@@ -236,7 +263,6 @@
         }
       };
 
-      // --- Pause/Resume Handlers ---
       const handleResumeBreak = () => {
         const inAmt = parseFloat(pauseIn) || 0;
         const outAmt = parseFloat(pauseOut) || 0;
@@ -287,23 +313,25 @@
       const [exGetTube, setExGetTube] = useState('t1_20');
       const [exGetDenom, setExGetDenom] = useState(20);
       const [exGetQty, setExGetQty] = useState('');
+      const [exDest, setExDest] = useState('tidel'); // For transfer_out
       const [draftAmounts, setDraftAmounts] = useState({ 1000: '', 500: '', 100: '', 50: '', 20: '' });
 
       const executeExchange = () => {
-        if(exType === 'draft_tidel') {
+        if(exType === 'transfer_out') {
            const drawerSetter = exPos === 'pos1' ? setPos1 : setPos2;
            const drawerState = exPos === 'pos1' ? pos1 : pos2;
-           let totalDraft = 0; let hasError = false; let draftDetails = [];
+           let totalTransfer = 0; let hasError = false; let transferDetails = [];
 
            Object.entries(draftAmounts).forEach(([denom, qtyStr]) => {
              const qty = parseInt(qtyStr) || 0;
              if (qty > 0) {
                if (drawerState[denom] < qty) { alert(`แบงก์ ${denom} ในลิ้นชัก ${exPos.toUpperCase()} มีไม่พอ!`); hasError = true; }
-               totalDraft += qty * parseInt(denom); draftDetails.push(`${denom}x${qty}`);
+               totalTransfer += qty * parseInt(denom); transferDetails.push(`${denom}x${qty}`);
              }
            });
-           if (hasError || totalDraft === 0) return;
+           if (hasError || totalTransfer === 0) return;
 
+           // Deduct from Source
            drawerSetter(p => {
              const next = { ...p };
              Object.entries(draftAmounts).forEach(([denom, qtyStr]) => {
@@ -311,10 +339,33 @@
              }); return next;
            });
            
-           setDraftedTotal(p => p + totalDraft); // บันทึกยอดดราฟเพื่อไม่ให้เงินหายไปจาก grandTotal
-           addLog(`🔽 ดราฟ Tidel จาก ${exPos.toUpperCase()}: รวม ฿${formatCurr(totalDraft)} (${draftDetails.join(', ')})`);
+           // Add to Destination
+           if (exDest === 'tidel') {
+               setDraftedTotal(p => p + totalTransfer); 
+               addLog(`🔽 ดราฟ Tidel จาก ${exPos.toUpperCase()}: ฿${formatCurr(totalTransfer)} (${transferDetails.join(', ')})`);
+           } else if (exDest === 'under') {
+               setUnderMachine(p => parseFloat(p||0) + totalTransfer);
+               addLog(`📥 โอนไปใต้ลิ้นชัก จาก ${exPos.toUpperCase()}: ฿${formatCurr(totalTransfer)} (${transferDetails.join(', ')})`);
+           } else if (exDest === 'pos1') {
+               setPos1(p => {
+                   const next = {...p};
+                   Object.entries(draftAmounts).forEach(([denom, qtyStr]) => {
+                       const qty = parseInt(qtyStr) || 0; if (qty > 0) next[denom] += qty;
+                   }); return next;
+               });
+               addLog(`🔄 โอนไป POS 1 จาก ${exPos.toUpperCase()}: ฿${formatCurr(totalTransfer)} (${transferDetails.join(', ')})`);
+           } else if (exDest === 'pos2') {
+               setPos2(p => {
+                   const next = {...p};
+                   Object.entries(draftAmounts).forEach(([denom, qtyStr]) => {
+                       const qty = parseInt(qtyStr) || 0; if (qty > 0) next[denom] += qty;
+                   }); return next;
+               });
+               addLog(`🔄 โอนไป POS 2 จาก ${exPos.toUpperCase()}: ฿${formatCurr(totalTransfer)} (${transferDetails.join(', ')})`);
+           }
+
            setDraftAmounts({ 1000: '', 500: '', 100: '', 50: '', 20: '' });
-           alert('ดราฟเงินสำเร็จ!'); setActiveTab('count'); return;
+           alert('โอนเงินเรียบร้อย!'); setActiveTab('count'); return;
         }
 
         if(exType === 'pull_under') {
@@ -462,7 +513,7 @@
                   </div>
                 </div>
 
-                {/* Denom Keyboard */}
+                {/* Denom Keyboard (ปรับขนาดเล็กลง h-14) */}
                 <div className="grid grid-cols-3 gap-2 flex-1 pb-2 content-start">
                   {denoms.map(d => {
                     const drawerData = activePos === 'pos1' ? pos1 : pos2;
@@ -623,20 +674,44 @@
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">1. ต้องการทำอะไร?</label>
                       <select value={exType} onChange={e => setExType(e.target.value)} className="w-full p-2 border border-slate-300 rounded-lg font-bold text-blue-800 bg-blue-50">
+                        <option value="transfer_out">โอนเงินออก / ดราฟเงิน</option>
                         <option value="tidel_tube">ดึงหลอด/มัด จากตู้ Tidel</option>
                         <option value="pull_under">ดึงเงินทอนสำรอง (ดึงเข้าเก๊ะไม่ต้องแลก)</option>
                         <option value="internal_under">เอาแบงก์ใหญ่แลกเงินย่อยกับใต้เครื่อง</option>
-                        <option value="draft_tidel">ดราฟเงิน (ฝากเงินเข้าตู้ Tidel)</option>
                       </select>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">2. เครื่องไหนทำรายการ?</label>
+                      <label className="block text-xs font-bold text-slate-500 mb-1">2. เครื่องไหนเป็นคนทำรายการ?</label>
                       <select value={exPos} onChange={e => setExPos(e.target.value)} className="w-full p-2 border border-slate-300 rounded-lg">
                         <option value="pos1">POS 1</option>
                         <option value="pos2">POS 2</option>
                       </select>
                     </div>
+
+                    {/* โอนเงินออก / ดราฟเงิน */}
+                    {exType === 'transfer_out' && (
+                      <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
+                         <div className="text-xs font-bold text-blue-600 mb-2">ระบุจำนวนแบงก์ที่จะโอนจาก {exPos.toUpperCase()}</div>
+                         <div>
+                           <label className="block text-[10px] font-bold text-slate-500 mb-1">โอนไปที่ไหน?</label>
+                           <select value={exDest} onChange={e => setExDest(e.target.value)} className="w-full p-2 border rounded">
+                             <option value="tidel">ตู้เซฟ Tidel (ดราฟเงิน)</option>
+                             <option value="under">ใต้ลิ้นชัก (สำรอง)</option>
+                             {exPos !== 'pos1' && <option value="pos1">ลิ้นชัก POS 1</option>}
+                             {exPos !== 'pos2' && <option value="pos2">ลิ้นชัก POS 2</option>}
+                           </select>
+                         </div>
+                         {[1000, 500, 100, 50, 20].map(d => (
+                           <div key={`draft-${d}`} className="flex justify-between items-center border-b border-slate-200 pb-1">
+                             <label className="text-sm font-bold text-slate-600">แบงก์ {d}</label>
+                             <div className="flex items-center gap-2">
+                               <input type="number" value={draftAmounts[d]} onChange={(e) => setDraftAmounts(p => ({...p, [d]: e.target.value}))} onFocus={e=>e.target.select()} className="w-20 p-1 border border-slate-300 rounded text-center font-bold" placeholder="จำนวนใบ" />
+                             </div>
+                           </div>
+                         ))}
+                      </div>
+                    )}
 
                     {/* ซื้อหลอด Tidel */}
                     {exType === 'tidel_tube' && (
@@ -711,21 +786,6 @@
                       </div>
                     )}
 
-                    {/* ดราฟเงินลง Tidel */}
-                    {exType === 'draft_tidel' && (
-                      <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
-                         <div className="text-xs font-bold text-red-600 mb-2">ระบุจำนวนแบงก์ที่จะนำจาก {exPos.toUpperCase()} หยอดลง Tidel</div>
-                         {[1000, 500, 100, 50, 20].map(d => (
-                           <div key={`draft-${d}`} className="flex justify-between items-center border-b border-slate-200 pb-1">
-                             <label className="text-sm font-bold text-slate-600">แบงก์ {d}</label>
-                             <div className="flex items-center gap-2">
-                               <input type="number" value={draftAmounts[d]} onChange={(e) => setDraftAmounts(p => ({...p, [d]: e.target.value}))} onFocus={e=>e.target.select()} className="w-20 p-1 border border-slate-300 rounded text-center font-bold" placeholder="จำนวนใบ" />
-                             </div>
-                           </div>
-                         ))}
-                      </div>
-                    )}
-
                     <button onClick={executeExchange} className="w-full py-3 bg-slate-800 text-white rounded-lg font-bold shadow-lg active:scale-95 transition-transform">
                       ✅ ยืนยันทำรายการ
                     </button>
@@ -761,60 +821,76 @@
                     <button onClick={()=>setActiveTab('count')} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-md">ไปหน้าตรวจนับ</button>
                   </div>
                 ) : (
-                  <div className="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden">
-                    <div className="bg-slate-800 p-4 text-white text-center">
-                      <h2 className="font-bold text-xl mb-1">📊 สรุปผลการตรวจนับ</h2>
-                      <p className="text-xs text-slate-400">เปรียบเทียบจากยอดฐานอ้างอิงที่ตั้งไว้</p>
+                  <div className="space-y-4">
+                    {/* Summary Block (ที่ใช้บันทึกภาพ) */}
+                    <div className="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden pb-4" ref={summaryRef}>
+                      <div className="bg-slate-800 p-4 text-white text-center mb-4">
+                        <h2 className="font-bold text-xl mb-1">📊 สรุปผลการตรวจนับ</h2>
+                        <p className="text-xs text-slate-400">วันที่: {new Date().toLocaleDateString('th-TH')}</p>
+                      </div>
+
+                      <div className="px-4 space-y-4">
+                        
+                        {/* Breakdown นับได้จริง */}
+                        <div className="space-y-2 mb-4">
+                          <div className="text-xs font-bold text-slate-500 border-b pb-1 mb-2">รายละเอียดเงินในระบบ (นับได้จริง)</div>
+                          <div className="flex justify-between text-sm text-slate-700"><span>ลิ้นชัก POS 1:</span> <span className="font-semibold">฿{formatCurr(pos1Total)}</span></div>
+                          <div className="flex justify-between text-sm text-slate-700"><span>ลิ้นชัก POS 2:</span> <span className="font-semibold">฿{formatCurr(pos2Total)}</span></div>
+                          <div className="flex justify-between text-sm text-slate-700"><span>หลอด Tidel:</span> <span className="font-semibold">฿{formatCurr(tidelTotal)}</span></div>
+                          <div className="flex justify-between text-sm text-slate-700"><span>ใต้ลิ้นชัก (สำรอง):</span> <span className="font-semibold">฿{formatCurr(underTotal)}</span></div>
+                          <div className="flex justify-between text-sm text-slate-700"><span>ยอดดราฟลงเซฟไปแล้ว:</span> <span className="font-semibold">฿{formatCurr(draftedTotal)}</span></div>
+                          <div className="flex justify-between text-base font-bold border-t border-slate-200 pt-2 mt-2 text-blue-800">
+                            <span>นับได้จริงทั้งหมด:</span>
+                            <span>฿{formatCurr(grandTotal)}</span>
+                          </div>
+                        </div>
+
+                        {/* Expected Breakdown */}
+                        <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2">
+                          <div className="text-xs font-bold text-slate-500 border-b pb-1 mb-2">ที่มาของเป้าหมายระบบ (Expected)</div>
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-slate-600">ยอดฐานอ้างอิงเริ่มต้น:</span>
+                            <span className="font-semibold text-slate-800">฿{formatCurr(baseline)}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-emerald-600">+ ยอดขาย (รับ-ทอน):</span>
+                            <span className="font-semibold text-emerald-700">฿{formatCurr(salesTotal)}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-emerald-600">+ ยอดฝากเงิน (รับ-ทอน):</span>
+                            <span className="font-semibold text-emerald-700">฿{formatCurr(depositTotal)}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-amber-600">{breakAdjustments >= 0 ? '+' : '-'} เงินเข้า/ออกตอนพักเครื่อง:</span>
+                            <span className="font-semibold text-amber-700">฿{formatCurr(breakAdjustments)}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-base font-bold border-t border-slate-300 pt-2 mt-2">
+                            <span className="text-slate-800">เป้าหมายระบบ (ควรมี):</span>
+                            <span className="text-blue-700">฿{formatCurr(expectedTotal)}</span>
+                          </div>
+                        </div>
+
+                        {/* Variance Box */}
+                        <div className={`p-4 rounded-xl border-2 text-center mt-4 ${variance === 0 ? 'bg-emerald-50 border-emerald-200' : variance > 0 ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200'}`}>
+                          <div className="text-sm font-bold text-slate-600 mb-1">ผลต่าง (Variance)</div>
+                          <div className={`text-3xl font-black ${variance === 0 ? 'text-emerald-600' : variance > 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                            {variance > 0 ? '+' : ''}{formatCurr(variance)}
+                          </div>
+                          <div className={`text-sm font-bold mt-1 ${variance === 0 ? 'text-emerald-500' : variance > 0 ? 'text-blue-500' : 'text-red-500'}`}>
+                            ({variance === 0 ? 'ยอดพอดี' : variance > 0 ? 'เงินเกิน' : 'เงินขาด'})
+                          </div>
+                        </div>
+
+                      </div>
                     </div>
 
-                    <div className="p-4 space-y-4">
-                      
-                      {/* Expected Breakdown */}
-                      <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2">
-                        <div className="text-xs font-bold text-slate-500 border-b pb-1 mb-2">ที่มาของยอดระบบ (Expected)</div>
-                        <div className="flex justify-between items-center text-sm">
-                          <span className="text-slate-600">ยอดฐานอ้างอิงเริ่มต้น:</span>
-                          <span className="font-semibold text-slate-800">฿{formatCurr(baseline)}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm">
-                          <span className="text-emerald-600">+ ยอดขาย (ผ่านการจบบิล):</span>
-                          <span className="font-semibold text-emerald-700">฿{formatCurr(salesTotal)}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm">
-                          <span className="text-emerald-600">+ ยอดฝาก (ผ่านการจบบิล):</span>
-                          <span className="font-semibold text-emerald-700">฿{formatCurr(depositTotal)}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm">
-                          <span className="text-amber-600">{breakAdjustments >= 0 ? '+' : '-'} เงินเข้า/ออกตอนพักเครื่อง:</span>
-                          <span className="font-semibold text-amber-700">฿{formatCurr(breakAdjustments)}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-base font-bold border-t border-slate-300 pt-2 mt-2">
-                          <span className="text-slate-800">เป้าหมายระบบ (ควรมี):</span>
-                          <span className="text-blue-700">฿{formatCurr(expectedTotal)}</span>
-                        </div>
-                      </div>
-
-                      {/* Actual Comparison */}
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 bg-blue-50 border border-blue-200 p-3 rounded-lg text-center">
-                          <div className="text-xs font-bold text-slate-500 mb-1">นับได้จริงทั้งหมด</div>
-                          <div className="text-xl font-bold text-blue-700">฿{formatCurr(grandTotal)}</div>
-                          {draftedTotal > 0 && <div className="text-[10px] text-slate-500 mt-1">(รวมดราฟเซฟ ฿{formatCurr(draftedTotal)})</div>}
-                        </div>
-                      </div>
-
-                      {/* Variance Box */}
-                      <div className={`p-4 rounded-xl border-2 text-center ${variance === 0 ? 'bg-emerald-50 border-emerald-200' : variance > 0 ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200'}`}>
-                        <div className="text-sm font-bold text-slate-600 mb-1">ผลต่าง (Variance)</div>
-                        <div className={`text-3xl font-black ${variance === 0 ? 'text-emerald-600' : variance > 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                          {variance > 0 ? '+' : ''}{formatCurr(variance)}
-                        </div>
-                        <div className={`text-sm font-bold mt-1 ${variance === 0 ? 'text-emerald-500' : variance > 0 ? 'text-blue-500' : 'text-red-500'}`}>
-                          ({variance === 0 ? 'ยอดพอดี' : variance > 0 ? 'เงินเกิน' : 'เงินขาด'})
-                        </div>
-                      </div>
-
-                    </div>
+                    <button 
+                      onClick={downloadSummaryImage} 
+                      disabled={isDownloading}
+                      className={`w-full py-4 rounded-xl font-bold text-lg shadow-md transition-all flex items-center justify-center gap-2 ${isDownloading ? 'bg-slate-400 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
+                    >
+                      {isDownloading ? '⏳ กำลังบันทึกรูปภาพ...' : '📸 บันทึกเป็นรูปภาพ (Print Summary)'}
+                    </button>
                   </div>
                 )}
 
