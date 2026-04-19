@@ -52,8 +52,12 @@
         }
       }, []);
 
-      // --- State Management ---
-      const [systemData, setSystemData] = useState({ startingCash: '', cashSales: '', depositServices: '' });
+      // --- Shift State Management ---
+      const [shiftActive, setShiftActive] = useState(false);
+      const [startingCashAmount, setStartingCashAmount] = useState(0);
+
+      // --- Form State Management ---
+      const [systemData, setSystemData] = useState({ cashSales: '', depositServices: '' });
       const [drawer, setDrawer] = useState({
         500: '', 100: '', 50: '', 20: '',
         10: '', 5: '', 2: '', 1: '', 0.5: '', 0.25: ''
@@ -71,13 +75,20 @@
       const [savedLogs, setSavedLogs] = useState([]);
       const surveyRef = useRef(null);
 
+      // Load History & Current Shift State
       useEffect(() => {
         const logs = JSON.parse(localStorage.getItem('posShiftLogs') || '[]');
         setSavedLogs(logs);
+
+        const currentShift = JSON.parse(localStorage.getItem('posCurrentShift'));
+        if (currentShift && currentShift.active) {
+          setShiftActive(true);
+          setStartingCashAmount(currentShift.startingCash);
+        }
       }, []);
 
       // --- Calculations ---
-      const systemExpected = (parseFloat(systemData.startingCash) || 0) + (parseFloat(systemData.cashSales) || 0) + (parseFloat(systemData.depositServices) || 0);
+      const systemExpected = startingCashAmount + (parseFloat(systemData.cashSales) || 0) + (parseFloat(systemData.depositServices) || 0);
       const drawerTotal = Object.entries(drawer).reduce((total, [denom, count]) => total + (parseFloat(denom) * (parseInt(count) || 0)), 0);
       
       const tidelTubesConfig = [
@@ -95,6 +106,15 @@
       const otherServicesTotal = Object.values(otherServices).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
 
       // --- Handlers ---
+      const resetInputs = () => {
+        setSystemData({ cashSales: '', depositServices: '' });
+        setDrawer({ 500: '', 100: '', 50: '', 20: '', 10: '', 5: '', 2: '', 1: '', 0.5: '', 0.25: '' });
+        setTidel({ tube1_20: '', tube2_20: '', tube3_20: '', tube4_100: '', tube5_100: '', tube6_100: '', tube7_100: '', tube8_100: '' });
+        setOutsideCash({ amount: '', note: '' });
+        setEPayments({ truewallet: '', wechat: '', alipay: '', alipayPlus: '', creditCard: '' });
+        setOtherServices({ topupTrueWallet: '', bankDeposit: '', billPayment: '', other: '' });
+      };
+
       const handleInputChange = (setter) => (field, value) => {
         if (value === '' || !isNaN(value)) setter(prev => ({ ...prev, [field]: value }));
       };
@@ -105,8 +125,21 @@
 
       const formatCurrency = (amount) => new Intl.NumberFormat('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
 
-      const handleSaveToLocal = () => {
-        if (window.confirm('ต้องการบันทึกข้อมูลนี้ลงในเครื่องเพื่อเปรียบเทียบใช่หรือไม่?')) {
+      const handleStartShift = () => {
+        if (actualTotal === 0 && !window.confirm('ยอดเงินทอนเริ่มต้นเป็น 0 บาท ยืนยันที่จะเริ่มกะใช่หรือไม่?')) {
+          return;
+        }
+        if (window.confirm(`ยืนยันการเริ่มกะด้วยยอดเงินทอนเริ่มต้น ฿${formatCurrency(actualTotal)} ใช่หรือไม่?`)) {
+          setStartingCashAmount(actualTotal);
+          setShiftActive(true);
+          localStorage.setItem('posCurrentShift', JSON.stringify({ active: true, startingCash: actualTotal }));
+          resetInputs(); // ล้างช่องนับเงินเพื่อให้พร้อมสำหรับการนับปิดกะ
+          alert('✅ เริ่มกะสำเร็จ! ระบบบันทึกยอดเงินทอนเริ่มต้นไว้แล้ว');
+        }
+      };
+
+      const handleEndShift = () => {
+        if (window.confirm('ต้องการบันทึกการตรวจนับและปิดกะใช่หรือไม่?')) {
           const newLog = {
             id: Date.now(),
             date: new Date().toLocaleString('th-TH'),
@@ -116,7 +149,14 @@
           const updatedLogs = [newLog, ...savedLogs].slice(0, 30);
           localStorage.setItem('posShiftLogs', JSON.stringify(updatedLogs));
           setSavedLogs(updatedLogs);
-          alert('บันทึกข้อมูลลงเครื่องสำเร็จ สามารถกดปุ่ม "ดูประวัติ" เพื่อเปรียบเทียบได้');
+          
+          // เคลียร์สถานะกะ
+          setShiftActive(false);
+          setStartingCashAmount(0);
+          localStorage.removeItem('posCurrentShift');
+          resetInputs();
+          
+          alert('💾 บันทึกปิดกะสำเร็จ! สามารถดูประวัติได้ที่ปุ่ม "ดูประวัติ"');
         }
       };
 
@@ -158,9 +198,15 @@
               <button onClick={() => setShowHistory(true)} className="flex-1 sm:flex-none bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-4 py-2 rounded-lg font-bold border border-indigo-300 transition-colors">
                 🕒 ดูประวัติ
               </button>
-              <button onClick={handleSaveToLocal} className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold shadow transition-colors">
-                💾 บันทึกลงเครื่อง
-              </button>
+              {shiftActive && (
+                <button onClick={() => {
+                  if(window.confirm('ต้องการยกเลิกกะที่กำลังทำงานอยู่ใช่หรือไม่? ข้อมูลที่บันทึกจะหายไป')) {
+                    setShiftActive(false); setStartingCashAmount(0); localStorage.removeItem('posCurrentShift'); resetInputs();
+                  }
+                }} className="flex-1 sm:flex-none bg-red-100 hover:bg-red-200 text-red-700 px-4 py-2 rounded-lg font-bold border border-red-300 transition-colors">
+                  ยกเลิกกะ
+                </button>
+              )}
             </div>
           </div>
 
@@ -211,54 +257,68 @@
             <div className="max-w-7xl mx-auto grid grid-cols-1 xl:grid-cols-4 gap-4">
               
               <div className="xl:col-span-1 space-y-4">
-                <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
-                  <div className="bg-indigo-600 px-4 py-3 text-white">
-                    <h2 className="font-bold">💻 ยอดเงินสดตามระบบ</h2>
+                {!shiftActive ? (
+                  <div className="bg-blue-50 rounded-lg shadow border border-blue-200 p-6 text-center space-y-4 sticky top-4">
+                    <div className="text-4xl">👋</div>
+                    <h2 className="text-xl font-bold text-blue-800">กำลังเตรียมเริ่มกะ</h2>
+                    <p className="text-gray-600 text-sm">
+                      กรุณานับเงินในลิ้นชัก ตู้ Tidel และเงินนอกเครื่องที่ท่านได้รับมา แล้วกดปุ่ม <strong>"ยืนยันการเริ่มกะ"</strong> เพื่อตั้งเป็นเงินทอนเริ่มต้น
+                    </p>
                   </div>
-                  <div className="p-4 space-y-3 bg-indigo-50/30">
-                    <div>
-                      <label className="block text-sm font-bold text-gray-700 mb-1">เงินทอนเริ่มต้น (Starting Cash)</label>
-                      <input type="number" className="w-full p-2 border border-indigo-200 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-right font-bold text-indigo-900" placeholder="0.00" value={systemData.startingCash} onChange={(e) => handleInputChange(setSystemData)('startingCash', e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-bold text-gray-700 mb-1">ยอดขายเงินสด</label>
-                      <input type="number" className="w-full p-2 border border-indigo-200 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-right font-bold text-indigo-900" placeholder="0.00" value={systemData.cashSales} onChange={(e) => handleInputChange(setSystemData)('cashSales', e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-bold text-gray-700 mb-1">บริการฝากเงิน</label>
-                      <input type="number" className="w-full p-2 border border-indigo-200 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-right font-bold text-indigo-900" placeholder="0.00" value={systemData.depositServices} onChange={(e) => handleInputChange(setSystemData)('depositServices', e.target.value)} />
-                    </div>
-                    <div className="border-t border-indigo-200 pt-2 mt-2">
-                      <div className="flex justify-between font-bold text-indigo-800">
-                        <span>รวมเป้าหมายระบบ:</span><span>฿{formatCurrency(systemExpected)}</span>
+                ) : (
+                  <>
+                    <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+                      <div className="bg-indigo-600 px-4 py-3 text-white">
+                        <h2 className="font-bold">💻 ยอดเงินสดตามระบบ</h2>
+                      </div>
+                      <div className="p-4 space-y-3 bg-indigo-50/30">
+                        <div>
+                          <label className="block text-sm font-bold text-gray-700 mb-1">เงินทอนเริ่มต้น (ล็อกไว้)</label>
+                          <div className="w-full p-2 border border-indigo-200 rounded bg-indigo-100 text-right font-bold text-indigo-900 cursor-not-allowed">
+                            ฿{formatCurrency(startingCashAmount)}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-bold text-gray-700 mb-1">ยอดขายเงินสด</label>
+                          <input type="number" className="w-full p-2 border border-indigo-200 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-right font-bold text-indigo-900" placeholder="0.00" value={systemData.cashSales} onChange={(e) => handleInputChange(setSystemData)('cashSales', e.target.value)} />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-bold text-gray-700 mb-1">บริการฝากเงิน</label>
+                          <input type="number" className="w-full p-2 border border-indigo-200 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-right font-bold text-indigo-900" placeholder="0.00" value={systemData.depositServices} onChange={(e) => handleInputChange(setSystemData)('depositServices', e.target.value)} />
+                        </div>
+                        <div className="border-t border-indigo-200 pt-2 mt-2">
+                          <div className="flex justify-between font-bold text-indigo-800">
+                            <span>รวมเป้าหมายระบบ:</span><span>฿{formatCurrency(systemExpected)}</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </div>
 
-                <div className="bg-white rounded-lg shadow border border-purple-200 overflow-hidden">
-                  <div className="bg-purple-600 px-4 py-3 text-white"><h2 className="font-bold">📱 Log ยอด E-Payment</h2></div>
-                  <div className="p-4 space-y-2 bg-purple-50/30">
-                    {[{ id: 'truewallet', label: 'TrueWallet' }, { id: 'wechat', label: 'WeChat Pay' }, { id: 'alipay', label: 'Alipay' }, { id: 'alipayPlus', label: 'Alipay+' }, { id: 'creditCard', label: 'บัตรเครดิต' }].map(item => (
-                      <div key={item.id} className="flex items-center justify-between">
-                        <label className="text-sm font-semibold text-gray-600">{item.label}</label>
-                        <input type="number" className="w-28 p-1.5 border border-purple-200 rounded focus:ring-2 focus:ring-purple-500 outline-none text-right text-sm" placeholder="0.00" value={ePayments[item.id]} onChange={(e) => handleInputChange(setEPayments)(item.id, e.target.value)} />
+                    <div className="bg-white rounded-lg shadow border border-purple-200 overflow-hidden">
+                      <div className="bg-purple-600 px-4 py-3 text-white"><h2 className="font-bold">📱 Log ยอด E-Payment</h2></div>
+                      <div className="p-4 space-y-2 bg-purple-50/30">
+                        {[{ id: 'truewallet', label: 'TrueWallet' }, { id: 'wechat', label: 'WeChat Pay' }, { id: 'alipay', label: 'Alipay' }, { id: 'alipayPlus', label: 'Alipay+' }, { id: 'creditCard', label: 'บัตรเครดิต' }].map(item => (
+                          <div key={item.id} className="flex items-center justify-between">
+                            <label className="text-sm font-semibold text-gray-600">{item.label}</label>
+                            <input type="number" className="w-28 p-1.5 border border-purple-200 rounded focus:ring-2 focus:ring-purple-500 outline-none text-right text-sm" placeholder="0.00" value={ePayments[item.id]} onChange={(e) => handleInputChange(setEPayments)(item.id, e.target.value)} />
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    </div>
 
-                <div className="bg-white rounded-lg shadow border border-pink-200 overflow-hidden">
-                  <div className="bg-pink-600 px-4 py-3 text-white"><h2 className="font-bold">🏧 Log บริการ (นอกเครื่อง)</h2></div>
-                  <div className="p-4 space-y-2 bg-pink-50/30">
-                    {[{ id: 'topupTrueWallet', label: 'เติมเงิน TrueWallet' }, { id: 'bankDeposit', label: 'ฝากเงินธนาคาร' }, { id: 'billPayment', label: 'จ่ายบิล' }, { id: 'other', label: 'อื่นๆ' }].map(item => (
-                      <div key={item.id} className="flex items-center justify-between">
-                        <label className="text-sm font-semibold text-gray-600">{item.label}</label>
-                        <input type="number" className="w-28 p-1.5 border border-pink-200 rounded focus:ring-2 focus:ring-pink-500 outline-none text-right text-sm" placeholder="0.00" value={otherServices[item.id]} onChange={(e) => handleInputChange(setOtherServices)(item.id, e.target.value)} />
+                    <div className="bg-white rounded-lg shadow border border-pink-200 overflow-hidden">
+                      <div className="bg-pink-600 px-4 py-3 text-white"><h2 className="font-bold">🏧 Log บริการ (นอกเครื่อง)</h2></div>
+                      <div className="p-4 space-y-2 bg-pink-50/30">
+                        {[{ id: 'topupTrueWallet', label: 'เติมเงิน TrueWallet' }, { id: 'bankDeposit', label: 'ฝากเงินธนาคาร' }, { id: 'billPayment', label: 'จ่ายบิล' }, { id: 'other', label: 'อื่นๆ' }].map(item => (
+                          <div key={item.id} className="flex items-center justify-between">
+                            <label className="text-sm font-semibold text-gray-600">{item.label}</label>
+                            <input type="number" className="w-28 p-1.5 border border-pink-200 rounded focus:ring-2 focus:ring-pink-500 outline-none text-right text-sm" placeholder="0.00" value={otherServices[item.id]} onChange={(e) => handleInputChange(setOtherServices)(item.id, e.target.value)} />
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="xl:col-span-2 space-y-4">
@@ -330,30 +390,34 @@
                 </div>
 
                 <div className="bg-gray-800 text-white rounded-lg shadow overflow-hidden sticky top-4">
-                  <div className="px-4 py-3 border-b border-gray-700"><h2 className="text-lg font-bold">📊 สรุปผลเงินสด (Cash Summary)</h2></div>
+                  <div className="px-4 py-3 border-b border-gray-700"><h2 className="text-lg font-bold">{shiftActive ? '📊 สรุปผลเงินสด (Cash Summary)' : '📊 ยอดเงินทอนเปิดกะ'}</h2></div>
                   <div className="p-4 space-y-2 text-sm">
                     <div className="flex justify-between text-gray-300"><span>1. ลิ้นชัก</span><span>{formatCurrency(drawerTotal)}</span></div>
                     <div className="flex justify-between text-gray-300"><span>2. ตู้ Tidel</span><span>{formatCurrency(tidelTotal)}</span></div>
                     <div className="flex justify-between text-gray-300"><span>3. นอกเครื่อง</span><span>{formatCurrency(outsideTotal)}</span></div>
                     
                     <div className="border-t border-gray-600 pt-2 mt-2">
-                      <div className="text-gray-400 text-xs">ยอดเงินสดที่นับได้จริง</div>
+                      <div className="text-gray-400 text-xs">{shiftActive ? 'ยอดเงินสดที่นับได้จริง' : 'รวมเงินทอนเริ่มต้น'}</div>
                       <div className="text-2xl font-bold text-right text-blue-400">฿{formatCurrency(actualTotal)}</div>
                     </div>
 
-                    <div className="bg-gray-900 rounded p-3 mt-3 border border-gray-700">
-                      <div className="text-gray-400 text-xs mb-1 flex justify-between"><span>ผลต่าง (Variance)</span><span>เป้า: ฿{formatCurrency(systemExpected)}</span></div>
-                      <div className={`text-xl font-bold text-right ${variance === 0 ? 'text-green-400' : variance > 0 ? 'text-blue-400' : 'text-red-400'}`}>
-                        {variance > 0 ? '+' : ''}{formatCurrency(variance)}
-                        <span className="text-xs font-normal ml-1">{variance === 0 ? '(พอดี)' : variance > 0 ? '(เกิน)' : '(ขาด)'}</span>
-                      </div>
-                    </div>
+                    {shiftActive && (
+                      <>
+                        <div className="bg-gray-900 rounded p-3 mt-3 border border-gray-700">
+                          <div className="text-gray-400 text-xs mb-1 flex justify-between"><span>ผลต่าง (Variance)</span><span>เป้า: ฿{formatCurrency(systemExpected)}</span></div>
+                          <div className={`text-xl font-bold text-right ${variance === 0 ? 'text-green-400' : variance > 0 ? 'text-blue-400' : 'text-red-400'}`}>
+                            {variance > 0 ? '+' : ''}{formatCurrency(variance)}
+                            <span className="text-xs font-normal ml-1">{variance === 0 ? '(พอดี)' : variance > 0 ? '(เกิน)' : '(ขาด)'}</span>
+                          </div>
+                        </div>
 
-                    <div className="border-t border-gray-600 pt-2 mt-3 space-y-1">
-                       <div className="text-gray-400 text-[10px] uppercase tracking-wider text-center mb-2">--- ยอดจดบันทึกเพิ่มเติม ---</div>
-                       <div className="flex justify-between text-purple-300 text-xs"><span>รวม E-Payment</span><span>฿{formatCurrency(ePaymentTotal)}</span></div>
-                       <div className="flex justify-between text-pink-300 text-xs"><span>รวมบริการนอกเครื่อง</span><span>฿{formatCurrency(otherServicesTotal)}</span></div>
-                    </div>
+                        <div className="border-t border-gray-600 pt-2 mt-3 space-y-1">
+                           <div className="text-gray-400 text-[10px] uppercase tracking-wider text-center mb-2">--- ยอดจดบันทึกเพิ่มเติม ---</div>
+                           <div className="flex justify-between text-purple-300 text-xs"><span>รวม E-Payment</span><span>฿{formatCurrency(ePaymentTotal)}</span></div>
+                           <div className="flex justify-between text-pink-300 text-xs"><span>รวมบริการนอกเครื่อง</span><span>฿{formatCurrency(otherServicesTotal)}</span></div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -361,12 +425,19 @@
           </div>
 
           <div className="max-w-7xl mx-auto mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4">
-            <button onClick={handleDownloadImage} disabled={isDownloading || !isReadyToCapture} className={`w-full py-4 rounded-lg font-bold text-lg shadow transition-colors flex items-center justify-center gap-2 ${isDownloading ? 'bg-gray-400 text-gray-100 cursor-wait' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}>
-              {isDownloading ? '⏳ กำลังสร้างรูปภาพ...' : (!isReadyToCapture ? '⏳ กำลังโหลดระบบภาพ...' : '📸 ดาวน์โหลดใบสรุป')}
+            <button onClick={handleDownloadImage} disabled={isDownloading || !isReadyToCapture || !shiftActive} className={`w-full py-4 rounded-lg font-bold text-lg shadow transition-colors flex items-center justify-center gap-2 ${(isDownloading || !shiftActive) ? 'bg-gray-400 text-gray-100 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}>
+              {isDownloading ? '⏳ กำลังสร้างรูปภาพ...' : (!isReadyToCapture ? '⏳ กำลังโหลดระบบภาพ...' : '📸 ดาวน์โหลดใบสรุปปิดกะ')}
             </button>
-            <button onClick={() => { handleSaveToLocal(); alert('ปิดกะเรียบร้อย!'); }} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-lg font-bold text-lg shadow transition-colors">
-              ✅ ยืนยันการปิดกะ
-            </button>
+            
+            {!shiftActive ? (
+              <button onClick={handleStartShift} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-4 rounded-lg font-bold text-lg shadow transition-colors">
+                ▶️ ยืนยันการเริ่มกะ (Start Shift)
+              </button>
+            ) : (
+              <button onClick={handleEndShift} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-lg font-bold text-lg shadow transition-colors">
+                ✅ บันทึก (ตรวจนับปิดกะ)
+              </button>
+            )}
           </div>
         </div>
       );
