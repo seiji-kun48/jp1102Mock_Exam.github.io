@@ -89,6 +89,10 @@
       const [isPaused, setIsPaused] = useState(false);
       const [isPostBreak, setIsPostBreak] = useState(false); 
       const [preBreakTotal, setPreBreakTotal] = useState(0); 
+      
+      // [แก้ไข/เพิ่มเติม]: เพิ่ม State สำหรับหน้าพักเครื่อง เพื่อป้องกันแอป Crash
+      const [pauseIn, setPauseIn] = useState('');
+      const [pauseOut, setPauseOut] = useState('');
 
       // --- Count Tab ---
       const [countSections, setCountSections] = useState({ pos1: true, pos2: false, tidel: false, under: false });
@@ -102,7 +106,9 @@
 
       // --- Calculations ---
       const calcTotal = (obj) => Object.entries(obj).reduce((sum, [val, qty]) => sum + (parseFloat(val) * (qty||0)), 0);
-      const formatCurr = (amt) => new Intl.NumberFormat('th-TH', { minimumFractionDigits: 0 }).format(amt);
+      
+      // [แก้ไข/เพิ่มเติม]: ปรับ formatCurr ให้รองรับทศนิยมสูงสุด 2 ตำแหน่งสำหรับเหรียญ
+      const formatCurr = (amt) => new Intl.NumberFormat('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(amt);
       
       const pos1Total = calcTotal(pos1);
       const pos2Total = calcTotal(pos2);
@@ -240,7 +246,7 @@
 
       // --- Counting & Logging Handlers ---
       const handleCountChange = (pos, denom, newVal) => {
-        const val = parseInt(newVal) || 0; 
+        const val = Math.max(0, parseInt(newVal) || 0); // [แก้ไข/เพิ่มเติม]: ป้องกันค่าติดลบเวลาแก้ผ่านปุ่ม
         const state = pos === 'pos1' ? pos1 : pos2;
         const setter = pos === 'pos1' ? setPos1 : setPos2;
         if (state[denom] !== val) {
@@ -284,6 +290,9 @@
         setIsPaused(false);
         setIsPostBreak(true);
         setActiveTab('count');
+        // [แก้ไข/เพิ่มเติม]: ล้างค่าที่บันทึกไว้หลังพักเครื่อง
+        setPauseIn(''); 
+        setPauseOut('');
         addLog('▶️ กลับจากพักเครื่อง เข้าสู่โหมดตรวจนับยอดหลังพัก');
       };
 
