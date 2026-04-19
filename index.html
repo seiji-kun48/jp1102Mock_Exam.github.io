@@ -92,11 +92,11 @@
       const drawerTotal = Object.entries(drawer).reduce((total, [denom, count]) => total + (parseFloat(denom) * (parseInt(count) || 0)), 0);
       
       const tidelTubesConfig = [
-        { id: 'tube1_20', value: 20 }, { id: 'tube2_20', value: 20 }, { id: 'tube3_20', value: 20 },
-        { id: 'tube4_100', value: 100 }, { id: 'tube5_100', value: 100 }, { id: 'tube6_100', value: 100 },
-        { id: 'tube7_100', value: 100 }, { id: 'tube8_100', value: 100 }
+        { id: 'tube1_20', label: 'ช่อง 20', multiplier: 200 }, { id: 'tube2_20', label: 'ช่อง 20', multiplier: 200 }, { id: 'tube3_20', label: 'ช่อง 20', multiplier: 200 },
+        { id: 'tube4_100', label: 'ช่อง 100', multiplier: 100 }, { id: 'tube5_100', label: 'ช่อง 100', multiplier: 100 }, { id: 'tube6_100', label: 'ช่อง 100', multiplier: 100 },
+        { id: 'tube7_100', label: 'ช่อง 100', multiplier: 100 }, { id: 'tube8_100', label: 'ช่อง 100', multiplier: 100 }
       ];
-      const tidelTotal = tidelTubesConfig.reduce((total, tube) => total + (tube.value * (parseInt(tidel[tube.id]) || 0)), 0);
+      const tidelTotal = tidelTubesConfig.reduce((total, tube) => total + (tube.multiplier * (parseInt(tidel[tube.id]) || 0)), 0);
       
       const outsideTotal = parseFloat(outsideCash.amount) || 0;
       const actualTotal = drawerTotal + tidelTotal + outsideTotal;
@@ -124,6 +124,21 @@
       };
 
       const formatCurrency = (amount) => new Intl.NumberFormat('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
+
+      const handleSaveToLocal = () => {
+        if (window.confirm('ต้องการบันทึกข้อมูลการตรวจนับนี้ลงในประวัติใช่หรือไม่?')) {
+          const newLog = {
+            id: Date.now(),
+            date: new Date().toLocaleString('th-TH'),
+            systemExpected, actualTotal, variance,
+            drawerTotal, tidelTotal, outsideTotal, ePaymentTotal, otherServicesTotal
+          };
+          const updatedLogs = [newLog, ...savedLogs].slice(0, 30);
+          localStorage.setItem('posShiftLogs', JSON.stringify(updatedLogs));
+          setSavedLogs(updatedLogs);
+          alert('💾 บันทึกประวัติเรียบร้อยแล้ว');
+        }
+      };
 
       const handleStartShift = () => {
         if (actualTotal === 0 && !window.confirm('ยอดเงินทอนเริ่มต้นเป็น 0 บาท ยืนยันที่จะเริ่มกะใช่หรือไม่?')) {
@@ -197,6 +212,9 @@
             <div className="mt-4 sm:mt-0 flex gap-2 w-full sm:w-auto">
               <button onClick={() => setShowHistory(true)} className="flex-1 sm:flex-none bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-4 py-2 rounded-lg font-bold border border-indigo-300 transition-colors">
                 🕒 ดูประวัติ
+              </button>
+              <button onClick={handleSaveToLocal} className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold shadow transition-colors">
+                💾 บันทึกประวัติ
               </button>
               {shiftActive && (
                 <button onClick={() => {
@@ -378,12 +396,12 @@
                       <span className="font-bold text-xl">฿{formatCurrency(tidelTotal)}</span>
                   </div>
                   <div className="p-3 space-y-1 bg-gray-50">
-                    <div className="grid grid-cols-3 text-xs font-bold text-gray-500 mb-1 px-1"><div>ช่อง</div><div className="text-center">ใบ</div><div className="text-right">รวม</div></div>
+                    <div className="grid grid-cols-3 text-xs font-bold text-gray-500 mb-1 px-1"><div>ช่อง</div><div className="text-center">ใบ/มัด</div><div className="text-right">รวม</div></div>
                     {tidelTubesConfig.map((tube, index) => (
                       <div key={tube.id} className="grid grid-cols-3 items-center gap-2">
-                        <div className="font-bold text-emerald-700 text-sm"><span className="text-[10px] text-gray-400 block -mb-1">#{index + 1}</span>฿{tube.value}</div>
+                        <div className="font-bold text-emerald-700 text-sm"><span className="text-[10px] text-gray-400 block -mb-1">#{index + 1}</span>{tube.label} (x{tube.multiplier})</div>
                         <input type="number" className="w-full p-1 border border-gray-300 rounded text-center focus:ring-2 focus:ring-emerald-500 outline-none text-sm" placeholder="0" value={tidel[tube.id]} onChange={(e) => handleInputChange(setTidel)(tube.id, e.target.value)} />
-                        <div className="text-right font-medium text-gray-700 text-sm">{formatCurrency(tube.value * (parseInt(tidel[tube.id]) || 0))}</div>
+                        <div className="text-right font-medium text-gray-700 text-sm">{formatCurrency(tube.multiplier * (parseInt(tidel[tube.id]) || 0))}</div>
                       </div>
                     ))}
                   </div>
@@ -424,18 +442,22 @@
             </div>
           </div>
 
-          <div className="max-w-7xl mx-auto mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4">
-            <button onClick={handleDownloadImage} disabled={isDownloading || !isReadyToCapture || !shiftActive} className={`w-full py-4 rounded-lg font-bold text-lg shadow transition-colors flex items-center justify-center gap-2 ${(isDownloading || !shiftActive) ? 'bg-gray-400 text-gray-100 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}>
-              {isDownloading ? '⏳ กำลังสร้างรูปภาพ...' : (!isReadyToCapture ? '⏳ กำลังโหลดระบบภาพ...' : '📸 ดาวน์โหลดใบสรุปปิดกะ')}
+          <div className="max-w-7xl mx-auto mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 border-t pt-4">
+            <button onClick={handleDownloadImage} disabled={isDownloading || !isReadyToCapture} className={`w-full py-4 rounded-lg font-bold text-lg shadow transition-colors flex items-center justify-center gap-2 ${isDownloading ? 'bg-gray-400 text-gray-100 cursor-wait' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}>
+              {isDownloading ? '⏳ กำลังสร้างรูปภาพ...' : (!isReadyToCapture ? '⏳ กำลังโหลดระบบภาพ...' : '📸 ดาวน์โหลดใบสรุป')}
+            </button>
+            
+            <button onClick={handleSaveToLocal} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-lg font-bold text-lg shadow transition-colors">
+              💾 บันทึก (แค่ตรวจนับเฉยๆ)
             </button>
             
             {!shiftActive ? (
-              <button onClick={handleStartShift} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-4 rounded-lg font-bold text-lg shadow transition-colors">
-                ▶️ ยืนยันการเริ่มกะ (Start Shift)
+              <button onClick={handleStartShift} className="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded-lg font-bold text-lg shadow transition-colors">
+                ▶️ เริ่มกะ (ตั้งเงินทอนเริ่มต้น)
               </button>
             ) : (
-              <button onClick={handleEndShift} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-lg font-bold text-lg shadow transition-colors">
-                ✅ บันทึก (ตรวจนับปิดกะ)
+              <button onClick={handleEndShift} className="w-full bg-red-600 hover:bg-red-500 text-white py-4 rounded-lg font-bold text-lg shadow transition-colors">
+                🛑 ปิดกะ (บันทึก & ล้างข้อมูล)
               </button>
             )}
           </div>
