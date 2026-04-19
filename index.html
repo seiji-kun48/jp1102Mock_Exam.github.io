@@ -90,7 +90,6 @@
       const [isPostBreak, setIsPostBreak] = useState(false); 
       const [preBreakTotal, setPreBreakTotal] = useState(0); 
       
-      // [แก้ไข/เพิ่มเติม]: เพิ่ม State สำหรับหน้าพักเครื่อง เพื่อป้องกันแอป Crash
       const [pauseIn, setPauseIn] = useState('');
       const [pauseOut, setPauseOut] = useState('');
 
@@ -107,7 +106,6 @@
       // --- Calculations ---
       const calcTotal = (obj) => Object.entries(obj).reduce((sum, [val, qty]) => sum + (parseFloat(val) * (qty||0)), 0);
       
-      // [แก้ไข/เพิ่มเติม]: ปรับ formatCurr ให้รองรับทศนิยมสูงสุด 2 ตำแหน่งสำหรับเหรียญ
       const formatCurr = (amt) => new Intl.NumberFormat('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(amt);
       
       const pos1Total = calcTotal(pos1);
@@ -134,7 +132,6 @@
         return res.length > 0 ? res.join(', ') : 'ไม่มีหลอด';
       };
 
-      // --- Image Download Handler ---
       const downloadSummaryImage = async () => {
         if (!summaryRef.current) return;
         if (!window.html2canvas) {
@@ -176,7 +173,6 @@
         else setPos2(updateFn);
 
         setMovements(prev => {
-          // รีเซ็ต movement เฉพาะลิ้นชักปัจจุบันหากเริ่มบิลใหม่
           const baseMov = isNewTx ? { ...prev, [activePos]: {...defaultDrawer} } : { ...prev };
           return {
             ...baseMov,
@@ -246,7 +242,7 @@
 
       // --- Counting & Logging Handlers ---
       const handleCountChange = (pos, denom, newVal) => {
-        const val = Math.max(0, parseInt(newVal) || 0); // [แก้ไข/เพิ่มเติม]: ป้องกันค่าติดลบเวลาแก้ผ่านปุ่ม
+        const val = Math.max(0, parseInt(newVal) || 0); 
         const state = pos === 'pos1' ? pos1 : pos2;
         const setter = pos === 'pos1' ? setPos1 : setPos2;
         if (state[denom] !== val) {
@@ -290,7 +286,6 @@
         setIsPaused(false);
         setIsPostBreak(true);
         setActiveTab('count');
-        // [แก้ไข/เพิ่มเติม]: ล้างค่าที่บันทึกไว้หลังพักเครื่อง
         setPauseIn(''); 
         setPauseOut('');
         addLog('▶️ กลับจากพักเครื่อง เข้าสู่โหมดตรวจนับยอดหลังพัก');
@@ -349,6 +344,41 @@
       const [draftAmounts, setDraftAmounts] = useState({ 1000: '', 500: '', 100: '', 50: '', 20: '' });
 
       const executeExchange = () => {
+        
+        // [เพิ่มใหม่]: ลอจิกการหักแบงก์ไปมัดเป็นหลอดหยอด Tidel
+        if (exType === 'fill_tidel') {
+           const getQ = parseInt(exGetQty) || 0;
+           if(getQ <= 0) return alert('กรุณาระบุจำนวนหลอดที่ต้องการหยอด');
+           
+           const tubeConfig = tidelTubesConfig.find(t => t.id === exGetTube);
+           const billsPerTube = tubeConfig.val / tubeConfig.denom; // เช่น 200/20 = 10 ใบ
+           const totalBillsNeeded = billsPerTube * getQ;
+           const totalValue = tubeConfig.val * getQ;
+           
+           // หักเงินต้นทาง
+           if (exPos === 'under') {
+               if (underTotal < totalValue) return alert('เงินสำรองใต้ลิ้นชักมีไม่พอหยอด!');
+               setUnderMachine(p => parseFloat(p||0) - totalValue);
+           } else {
+               const drawerState = exPos === 'pos1' ? pos1 : pos2;
+               if (drawerState[tubeConfig.denom] < totalBillsNeeded) return alert(`แบงก์ ${tubeConfig.denom} ใน ${exPos.toUpperCase()} มีไม่พอ! (ต้องการ ${totalBillsNeeded} ใบ)`);
+               
+               const drawerSetter = exPos === 'pos1' ? setPos1 : setPos2;
+               drawerSetter(p => ({ ...p, [tubeConfig.denom]: p[tubeConfig.denom] - totalBillsNeeded }));
+           }
+           
+           // เติมหลอดเข้า Tidel
+           setTidel(p => ({ ...p, [exGetTube]: (p[exGetTube] || 0) + getQ }));
+           
+           const sourceName = exPos === 'under' ? 'ใต้เครื่อง' : exPos.toUpperCase();
+           addLog(`🔽 หยอด Tidel: นำเงินจาก ${sourceName} หยอดเข้า ${tubeConfig.label} จำนวน ${getQ} หลอด (รวม ฿${formatCurr(totalValue)})`);
+           
+           setExGetQty('');
+           alert('มัดหลอดหยอดลง Tidel เรียบร้อย!');
+           setActiveTab('count');
+           return;
+        }
+
         if(exType === 'transfer_out') {
            let totalTransfer = 0; let hasError = false; let transferDetails = [];
 
@@ -367,7 +397,6 @@
            if (exPos === 'under' && underTotal < totalTransfer) return alert('เงินใต้ลิ้นชักมีไม่พอ!');
            if (exPos === exDest) return alert('ไม่สามารถโอนไปที่เดียวกันได้!');
 
-           // หักเงินจากต้นทาง
            if (exPos === 'under') {
                setUnderMachine(p => parseFloat(p||0) - totalTransfer);
            } else {
@@ -382,10 +411,9 @@
            
            const sourceName = exPos === 'under' ? 'ใต้ลิ้นชัก' : exPos.toUpperCase();
 
-           // เพิ่มเงินให้ปลายทาง
            if (exDest === 'tidel') {
                setDraftedTotal(p => p + totalTransfer); 
-               addLog(`🔽 ดราฟ Tidel จาก ${sourceName}: ฿${formatCurr(totalTransfer)} (${transferDetails.join(', ')})`);
+               addLog(`🔽 ดราฟเงินเซฟ: จาก ${sourceName} ลงเซฟ Tidel ฿${formatCurr(totalTransfer)} (${transferDetails.join(', ')})`);
            } else if (exDest === 'under') {
                setUnderMachine(p => parseFloat(p||0) + totalTransfer);
                addLog(`📥 โอนไปใต้ลิ้นชัก จาก ${sourceName}: ฿${formatCurr(totalTransfer)} (${transferDetails.join(', ')})`);
@@ -744,9 +772,11 @@
                   <div className="space-y-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">1. ต้องการทำอะไร?</label>
-                      <select value={exType} onChange={e => setExType(e.target.value)} className="w-full p-2 border border-slate-300 rounded-lg font-bold text-blue-800 bg-blue-50">
-                        <option value="transfer_out">โอนเงินออก / ดราฟเงิน</option>
-                        <option value="tidel_tube">ดึงหลอด/มัด จากตู้ Tidel</option>
+                      {/* [เพิ่มใหม่]: เพิ่มตัวเลือก fill_tidel สำหรับมัดหลอดเข้าเซฟ */}
+                      <select value={exType} onChange={e => { setExType(e.target.value); setExPos('pos1'); }} className="w-full p-2 border border-slate-300 rounded-lg font-bold text-blue-800 bg-blue-50">
+                        <option value="transfer_out">โอนเงินออก / ดราฟเงิน (ไม่เข้าหลอด)</option>
+                        <option value="fill_tidel">มัดแบงก์เป็นหลอด หยอดใส่ตู้ Tidel</option>
+                        <option value="tidel_tube">ดึงหลอด/มัด จากตู้ Tidel (เอาออกจากเซฟ)</option>
                         <option value="pull_under">ดึงเงินทอนสำรอง (ดึงเข้าเก๊ะไม่ต้องแลก)</option>
                         <option value="internal_under">เอาแบงก์ใหญ่แลกเงินย่อยกับใต้เครื่อง</option>
                       </select>
@@ -757,9 +787,34 @@
                       <select value={exPos} onChange={e => setExPos(e.target.value)} className="w-full p-2 border border-slate-300 rounded-lg">
                         <option value="pos1">POS 1</option>
                         <option value="pos2">POS 2</option>
-                        {exType === 'transfer_out' && <option value="under">ใต้ลิ้นชัก (สำรอง)</option>}
+                        {/* [เพิ่มใหม่]: ยอมให้เลือก 'ใต้ลิ้นชัก' สำหรับกรณีมัดหลอดด้วย */}
+                        {(exType === 'transfer_out' || exType === 'fill_tidel') && <option value="under">ใต้ลิ้นชัก (สำรอง)</option>}
                       </select>
                     </div>
+
+                    {/* [เพิ่มใหม่]: UI สำหรับโหมด มัดหลอดหยอด Tidel */}
+                    {exType === 'fill_tidel' && (
+                      <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-200 space-y-3">
+                         <div className="text-xs font-bold text-emerald-700 mb-2">หักแบงก์จาก {exPos === 'under' ? 'ใต้ลิ้นชัก' : exPos.toUpperCase()} เพื่อมัดใส่หลอดหยอดลงตู้ Tidel</div>
+                         <div className="flex gap-2">
+                           <div className="flex-1">
+                             <label className="block text-[10px] font-bold text-emerald-600">หยอดเข้าช่อง Tidel</label>
+                             <select value={exGetTube} onChange={e => setExGetTube(e.target.value)} className="w-full p-2 border border-emerald-300 rounded">
+                               {tidelTubesConfig.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                             </select>
+                           </div>
+                           <div className="w-24">
+                             <label className="block text-[10px] font-bold text-emerald-600">จำนวน (หลอด)</label>
+                             <input type="number" value={exGetQty} onChange={e => setExGetQty(e.target.value)} onFocus={e=>e.target.select()} className="w-full p-2 border border-emerald-300 rounded text-center font-bold text-emerald-800" placeholder="0" />
+                           </div>
+                         </div>
+                         {exGetTube && (
+                           <div className="text-[10px] text-emerald-600 font-bold bg-white p-2 rounded border border-emerald-100">
+                             💡 1 หลอด จะถูกหักแบงก์ {tidelTubesConfig.find(t=>t.id===exGetTube).denom} จำนวน {tidelTubesConfig.find(t=>t.id===exGetTube).val / tidelTubesConfig.find(t=>t.id===exGetTube).denom} ใบ ออกจากลิ้นชักอัตโนมัติ
+                           </div>
+                         )}
+                      </div>
+                    )}
 
                     {/* โอนเงินออก / ดราฟเงิน */}
                     {exType === 'transfer_out' && (
@@ -785,11 +840,12 @@
                       </div>
                     )}
 
-                    {/* ซื้อหลอด Tidel */}
+                    {/* ซื้อหลอด Tidel (ดึงออก) */}
                     {exType === 'tidel_tube' && (
                       <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
+                        <div className="text-xs font-bold text-amber-600 mb-2">ฉีกหลอด Tidel ออกมาเป็นแบงก์เข้าลิ้นชัก</div>
                         {exPos === 'pos2' && (
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 mb-2">
                             <div className="flex-1">
                               <label className="block text-[10px] font-bold text-slate-500">จ่ายแบงก์ไป POS1</label>
                               <select value={exPayDenom} onChange={e => setExPayDenom(e.target.value)} className="w-full p-2 border rounded">
