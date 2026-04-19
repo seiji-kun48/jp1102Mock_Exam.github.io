@@ -50,6 +50,9 @@
       const [underMachine, setUnderMachine] = useState(''); 
       const [logs, setLogs] = useState([]);
 
+      // --- Tracking Movements (นับยอดรับ/ทอนระหว่างยังไม่ได้ตั้งฐาน) ---
+      const [movements, setMovements] = useState({ pos1: {...defaultDrawer}, pos2: {...defaultDrawer} });
+
       const denoms = [1000, 500, 100, 50, 20, 10, 5, 2, 1, 0.5, 0.25];
       const tidelTubesConfig = [
         { id: 't1_20', label: 'ช่อง 1 (แบงก์ 20)', val: 200, denom: 20 },
@@ -69,14 +72,14 @@
       };
 
       // --- Business Logic State (Summary & Reference) ---
-      const [baseline, setBaseline] = useState(null); // ยอดรวมอ้างอิงตอนกด "ตั้งยอดปัจจุบันเป็นฐาน"
+      const [baseline, setBaseline] = useState(null); 
       const [salesTotal, setSalesTotal] = useState(0);
       const [depositTotal, setDepositTotal] = useState(0);
-      const [breakAdjustments, setBreakAdjustments] = useState(0); // เงินเข้า-ออก ระหว่างพักเครื่อง
+      const [breakAdjustments, setBreakAdjustments] = useState(0); 
 
       // --- Action Tab State ---
-      const [actionMode, setActionMode] = useState('receive'); // receive, change
-      const [txType, setTxType] = useState('sales'); // sales, deposit
+      const [actionMode, setActionMode] = useState('receive'); 
+      const [txType, setTxType] = useState('sales'); 
       const [currentTx, setCurrentTx] = useState({ receive: 0, change: 0 });
       const [currentTxDetails, setCurrentTxDetails] = useState({ receive: {}, change: {} });
 
@@ -88,7 +91,7 @@
       // --- Count Tab (Dropdown States) ---
       const [countSections, setCountSections] = useState({ pos1: true, pos2: false, tidel: false, under: false });
       const toggleCountSection = (sec) => setCountSections(prev => ({ ...prev, [sec]: !prev[sec] }));
-      const [focusValTracker, setFocusValTracker] = useState(0); // For logging input changes
+      const [focusValTracker, setFocusValTracker] = useState(0); 
 
       // --- Sync Feature ---
       const fileInputRef = useRef(null);
@@ -112,19 +115,29 @@
 
       // --- Action Handlers ---
       const handleActionClick = (val) => {
+        const isReceive = actionMode === 'receive';
+        
         const updateFn = (prev) => {
           const currentQty = prev[val] || 0;
-          if (actionMode === 'receive') return { ...prev, [val]: currentQty + 1 };
-          else return { ...prev, [val]: Math.max(0, currentQty - 1) };
+          return { ...prev, [val]: currentQty + (isReceive ? 1 : -1) }; // ยอมให้ยอดติดลบได้เลย
         };
 
         if (activePos === 'pos1') setPos1(updateFn);
         else setPos2(updateFn);
 
+        // จดจำความเคลื่อนไหว
+        setMovements(prev => ({
+          ...prev,
+          [activePos]: {
+            ...prev[activePos],
+            [val]: prev[activePos][val] + (isReceive ? 1 : -1)
+          }
+        }));
+
         setCurrentTx(prev => ({
           ...prev,
-          receive: actionMode === 'receive' ? prev.receive + val : prev.receive,
-          change: actionMode === 'change' ? prev.change + val : prev.change
+          receive: isReceive ? prev.receive + val : prev.receive,
+          change: !isReceive ? prev.change + val : prev.change
         }));
 
         setCurrentTxDetails(prev => ({
@@ -137,12 +150,22 @@
         if(currentTx.receive === 0 && currentTx.change === 0) return;
         const revertFn = (prev) => {
            const next = { ...prev };
-           Object.entries(currentTxDetails.receive).forEach(([val, qty]) => next[val] = Math.max(0, next[val] - qty));
+           Object.entries(currentTxDetails.receive).forEach(([val, qty]) => next[val] = next[val] - qty);
            Object.entries(currentTxDetails.change).forEach(([val, qty]) => next[val] = next[val] + qty);
            return next;
         };
+
+        // คืนค่า Movement ด้วย
+        setMovements(prev => {
+           const nextMov = { ...prev[activePos] };
+           Object.entries(currentTxDetails.receive).forEach(([val, qty]) => nextMov[val] -= qty);
+           Object.entries(currentTxDetails.change).forEach(([val, qty]) => nextMov[val] += qty);
+           return { ...prev, [activePos]: nextMov };
+        });
+
         if (activePos === 'pos1') setPos1(revertFn);
         else setPos2(revertFn);
+
         setCurrentTx({ receive: 0, change: 0 });
         setCurrentTxDetails({ receive: {}, change: {} });
       };
@@ -171,7 +194,7 @@
 
       // --- Counting & Logging Handlers ---
       const handleCountChange = (pos, denom, newVal) => {
-        const val = Math.max(0, parseInt(newVal) || 0);
+        const val = parseInt(newVal) || 0; // ยอมให้กรอกติดลบได้
         const state = pos === 'pos1' ? pos1 : pos2;
         const setter = pos === 'pos1' ? setPos1 : setPos2;
         if (state[denom] !== val) {
@@ -182,10 +205,27 @@
       };
 
       const handleInputBlur = (pos, denom, currentVal) => {
-        const val = Math.max(0, parseInt(currentVal) || 0);
+        const val = parseInt(currentVal) || 0;
         if (val !== focusValTracker) {
           const diff = val - focusValTracker;
           addLog(`🧮 พิมพ์ปรับยอด ${pos.toUpperCase()} แบงก์ ${denom}: ${diff > 0 ? '+' : ''}${diff} ใบ`);
+        }
+      };
+
+      const handleTidelBlur = (tubeId, label, currentVal) => {
+        const val = Math.max(0, parseInt(currentVal) || 0);
+        if (val !== focusValTracker) {
+          const diff = val - focusValTracker;
+          addLog(`🧮 ปรับยอด Tidel ${label}: ${diff > 0 ? '+' : ''}${diff} หลอด`);
+        }
+      };
+
+      const handleUnderBlur = (currentVal) => {
+        const val = parseFloat(currentVal) || 0;
+        const prev = parseFloat(focusValTracker) || 0;
+        if (val !== prev) {
+          const diff = val - prev;
+          addLog(`🧮 ปรับยอดใต้ลิ้นชัก: ${diff > 0 ? '+' : ''}฿${formatCurr(diff)}`);
         }
       };
 
@@ -203,7 +243,7 @@
 
       // --- Data Sync Handlers ---
       const exportData = () => {
-        const data = { pos1, pos2, tidel, underMachine, logs, baseline, salesTotal, depositTotal, breakAdjustments };
+        const data = { pos1, pos2, tidel, underMachine, logs, baseline, salesTotal, depositTotal, breakAdjustments, movements };
         const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a'); a.href = url; a.download = `POS_Backup_${new Date().toISOString().slice(0,10)}.json`; a.click();
@@ -224,6 +264,7 @@
             if(data.salesTotal !== undefined) setSalesTotal(data.salesTotal);
             if(data.depositTotal !== undefined) setDepositTotal(data.depositTotal);
             if(data.breakAdjustments !== undefined) setBreakAdjustments(data.breakAdjustments);
+            if(data.movements) setMovements(data.movements);
             alert('📥 นำเข้าข้อมูลและซิงค์สำเร็จ!'); addLog(`☁️ นำเข้าข้อมูลซิงค์ (Import) จากไฟล์`);
           } catch(err) { alert('ไฟล์ไม่ถูกต้อง'); }
         };
@@ -432,12 +473,13 @@
                 
                 <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 shadow-sm">
                   <div className="text-xs text-indigo-800 font-semibold mb-2">
-                    💡 ทยอยนับไปเรื่อยๆ เมื่อมั่นใจว่ายอดถูกต้องแล้ว ให้ตั้งค่าเป็นยอดอ้างอิง เพื่อเริ่มนับการขาด/เกิน
+                    💡 เริ่มยอดจาก 0 ได้เลย หากระหว่างนับมีการรับ/ทอน แบงก์จะติดลบ และมีตัวเลขสะสมกำกับไว้ (ล้างยอดสะสมเมื่อตั้งฐาน)
                   </div>
                   <button onClick={() => {
                     if(window.confirm(`ยืนยันการตั้งยอดปัจจุบัน (฿${formatCurr(grandTotal)}) เป็นยอดอ้างอิงหรือไม่? \n(ยอดรับ/ฝาก และเงินปรับปรุงพักเครื่อง จะถูกรีเซ็ตเป็น 0)`)){
                       setBaseline(grandTotal);
                       setSalesTotal(0); setDepositTotal(0); setBreakAdjustments(0);
+                      setMovements({ pos1: {...defaultDrawer}, pos2: {...defaultDrawer} }); // เคลียร์ยอด movement
                       addLog(`📌 ตั้งยอดปัจจุบัน (฿${formatCurr(grandTotal)}) เป็นยอดอ้างอิงใหม่`);
                     }
                   }} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg font-bold text-sm shadow">
@@ -454,17 +496,25 @@
                   {countSections.pos1 && (
                     <div className="p-2 grid grid-cols-2 gap-2 bg-slate-50">
                       {denoms.map(d => (
-                        <div key={`p1-${d}`} className="flex justify-between items-center bg-white p-1.5 rounded border border-slate-200 shadow-sm">
+                        <div key={`p1-${d}`} className="flex justify-between items-center bg-white p-1.5 rounded border border-slate-200 shadow-sm relative">
                           <div className={`w-8 text-center text-[10px] font-bold py-1 rounded ${getDenomColor(d)}`}>{d}</div>
+                          
+                          {/* ตัวเลขโชว์ยอด Movement */}
+                          {movements.pos1[d] !== 0 && (
+                            <span className={`absolute left-10 text-[9px] font-bold ${movements.pos1[d] > 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                              ({movements.pos1[d] > 0 ? '+' : ''}{movements.pos1[d]})
+                            </span>
+                          )}
+
                           <div className="flex items-center gap-1">
-                            <button onClick={() => handleCountChange('pos1', d, pos1[d]-1)} className="w-7 h-7 bg-slate-200 rounded text-red-600 font-bold">-</button>
+                            <button onClick={() => handleCountChange('pos1', d, (pos1[d]||0)-1)} className="w-7 h-7 bg-slate-200 rounded text-red-600 font-bold">-</button>
                             <input type="number" 
-                              value={pos1[d] === 0 ? '' : pos1[d]} 
+                              value={pos1[d] === 0 ? '0' : pos1[d]} 
                               onChange={(e) => setPos1(p => ({...p, [d]: e.target.value === '' ? 0 : parseInt(e.target.value)}))} 
                               onFocus={() => setFocusValTracker(pos1[d])}
                               onBlur={(e) => handleInputBlur('pos1', d, e.target.value)}
                               className="w-10 text-center font-bold outline-none text-sm" placeholder="0" />
-                            <button onClick={() => handleCountChange('pos1', d, pos1[d]+1)} className="w-7 h-7 bg-slate-200 rounded text-emerald-600 font-bold">+</button>
+                            <button onClick={() => handleCountChange('pos1', d, (pos1[d]||0)+1)} className="w-7 h-7 bg-slate-200 rounded text-emerald-600 font-bold">+</button>
                           </div>
                         </div>
                       ))}
@@ -481,17 +531,25 @@
                   {countSections.pos2 && (
                     <div className="p-2 grid grid-cols-2 gap-2 bg-slate-50">
                       {denoms.map(d => (
-                        <div key={`p2-${d}`} className="flex justify-between items-center bg-white p-1.5 rounded border border-slate-200 shadow-sm">
+                        <div key={`p2-${d}`} className="flex justify-between items-center bg-white p-1.5 rounded border border-slate-200 shadow-sm relative">
                           <div className={`w-8 text-center text-[10px] font-bold py-1 rounded ${getDenomColor(d)}`}>{d}</div>
+                          
+                          {/* ตัวเลขโชว์ยอด Movement */}
+                          {movements.pos2[d] !== 0 && (
+                            <span className={`absolute left-10 text-[9px] font-bold ${movements.pos2[d] > 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                              ({movements.pos2[d] > 0 ? '+' : ''}{movements.pos2[d]})
+                            </span>
+                          )}
+
                           <div className="flex items-center gap-1">
-                            <button onClick={() => handleCountChange('pos2', d, pos2[d]-1)} className="w-7 h-7 bg-slate-200 rounded text-red-600 font-bold">-</button>
+                            <button onClick={() => handleCountChange('pos2', d, (pos2[d]||0)-1)} className="w-7 h-7 bg-slate-200 rounded text-red-600 font-bold">-</button>
                             <input type="number" 
-                              value={pos2[d] === 0 ? '' : pos2[d]} 
+                              value={pos2[d] === 0 ? '0' : pos2[d]} 
                               onChange={(e) => setPos2(p => ({...p, [d]: e.target.value === '' ? 0 : parseInt(e.target.value)}))} 
                               onFocus={() => setFocusValTracker(pos2[d])}
                               onBlur={(e) => handleInputBlur('pos2', d, e.target.value)}
                               className="w-10 text-center font-bold outline-none text-sm" placeholder="0" />
-                            <button onClick={() => handleCountChange('pos2', d, pos2[d]+1)} className="w-7 h-7 bg-slate-200 rounded text-emerald-600 font-bold">+</button>
+                            <button onClick={() => handleCountChange('pos2', d, (pos2[d]||0)+1)} className="w-7 h-7 bg-slate-200 rounded text-emerald-600 font-bold">+</button>
                           </div>
                         </div>
                       ))}
@@ -510,7 +568,12 @@
                       {tidelTubesConfig.map(tube => (
                         <div key={tube.id} className="flex justify-between items-center bg-white p-2 border rounded shadow-sm">
                           <span className="text-[10px] font-bold text-slate-600">{tube.label}</span>
-                          <input type="number" value={tidel[tube.id] === 0 ? '' : tidel[tube.id]} onChange={e => setTidel(p => ({...p, [tube.id]: parseInt(e.target.value)||0}))} className="w-12 text-center border border-slate-300 rounded font-bold text-sm" placeholder="0" />
+                          <input type="number" 
+                            value={tidel[tube.id] === 0 ? '' : tidel[tube.id]} 
+                            onChange={e => setTidel(p => ({...p, [tube.id]: parseInt(e.target.value)||0}))} 
+                            onFocus={() => setFocusValTracker(tidel[tube.id])}
+                            onBlur={(e) => handleTidelBlur(tube.id, tube.label, e.target.value)}
+                            className="w-12 text-center border border-slate-300 rounded font-bold text-sm" placeholder="0" />
                         </div>
                       ))}
                     </div>
@@ -526,7 +589,12 @@
                   {countSections.under && (
                     <div className="p-4 bg-slate-50">
                       <label className="text-xs font-bold text-slate-600 block mb-2">ยอดเงินสดสำรองรวมใต้เครื่อง</label>
-                      <input type="number" value={underMachine} onChange={e => setUnderMachine(e.target.value)} className="w-full text-right font-bold text-2xl border-b-2 border-slate-300 focus:border-amber-500 outline-none p-2 bg-transparent" placeholder="0.00" />
+                      <input type="number" 
+                        value={underMachine} 
+                        onChange={e => setUnderMachine(e.target.value)} 
+                        onFocus={() => setFocusValTracker(underMachine)}
+                        onBlur={(e) => handleUnderBlur(e.target.value)}
+                        className="w-full text-right font-bold text-2xl border-b-2 border-slate-300 focus:border-amber-500 outline-none p-2 bg-transparent" placeholder="0.00" />
                     </div>
                   )}
                 </div>
@@ -778,6 +846,7 @@
                     setTidel({ t1_20:0, t2_20:0, t3_20:0, t4_100:0, t5_100:0, t6_100:0, t7_100:0, t8_100:0 }); 
                     setUnderMachine(''); setLogs([]); setCurrentTx({receive:0,change:0}); setCurrentTxDetails({receive:{},change:{}});
                     setBaseline(null); setSalesTotal(0); setDepositTotal(0); setBreakAdjustments(0);
+                    setMovements({ pos1: {...defaultDrawer}, pos2: {...defaultDrawer} });
                     alert('ล้างข้อมูลเรียบร้อยแล้ว');
                   }
                 }} className="w-full py-4 text-red-500 font-bold bg-white border border-red-200 rounded-xl shadow-sm">
@@ -790,7 +859,7 @@
           </div>
 
           {/* Bottom Tabs */}
-          <div className="bg-white border-t border-slate-200 absolute bottom-0 w-full flex justify-around pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20">
+          <div className="bg-white border-t border-slate-200 fixed bottom-0 w-full max-w-lg mx-auto flex justify-around pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-50">
             <button onClick={() => setActiveTab('action')} className={`flex-1 flex flex-col items-center py-2 text-[10px] font-bold ${activeTab === 'action' ? 'text-blue-600' : 'text-slate-400'}`}>
               <span className="text-xl mb-0.5">🛒</span>รับ/ทอน
             </button>
