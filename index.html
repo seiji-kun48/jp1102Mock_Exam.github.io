@@ -9,7 +9,7 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f1f5f9; overscroll-behavior-y: contain; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f1f5f9; overscroll-behavior-y: auto; }
     /* สีของธนบัตรและเหรียญ */
     .bg-b1000 { background-color: #94a3b8; color: white; border-bottom: 4px solid #64748b; }
     .bg-b500 { background-color: #a855f7; color: white; border-bottom: 4px solid #7e22ce; }
@@ -18,6 +18,11 @@
     .bg-b20 { background-color: #22c55e; color: white; border-bottom: 4px solid #15803d; }
     .bg-coin { background-color: #fbbf24; color: #78350f; border-bottom: 4px solid #d97706; }
     .btn-press:active { transform: translateY(4px); border-bottom-width: 0px; margin-top: 4px; }
+    
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
   </style>
 </head>
 <body>
@@ -30,17 +35,33 @@
     const POSCashTracker = () => {
       // --- Global UI State ---
       const [activeTab, setActiveTab] = useState('action');
-      const [activePos, setActivePos] = useState('pos1'); // เครื่องที่กำลังโฟกัสทำงาน (pos1, pos2)
+      const [activePos, setActivePos] = useState('pos1'); 
 
       // --- Inventories State ---
       const defaultDrawer = { 1000:0, 500:0, 100:0, 50:0, 20:0, 10:0, 5:0, 2:0, 1:0, 0.5:0, 0.25:0 };
       const [pos1, setPos1] = useState({...defaultDrawer});
       const [pos2, setPos2] = useState({...defaultDrawer});
-      const [tidel, setTidel] = useState({ 100: 0, 20: 0 }); // นับเป็น มัด/หลอด
-      const [underMachine, setUnderMachine] = useState(''); // ยอดเงินใต้เครื่อง
+      
+      // Tidel มี 8 ช่อง: t1-t3(20), t4-t8(100)
+      const [tidel, setTidel] = useState({ 
+        t1_20: 0, t2_20: 0, t3_20: 0, 
+        t4_100: 0, t5_100: 0, t6_100: 0, t7_100: 0, t8_100: 0 
+      }); 
+      
+      const [underMachine, setUnderMachine] = useState(''); 
       const [logs, setLogs] = useState([]);
 
       const denoms = [1000, 500, 100, 50, 20, 10, 5, 2, 1, 0.5, 0.25];
+      const tidelTubesConfig = [
+        { id: 't1_20', label: 'ช่อง 1 (แบงก์ 20)', val: 200, denom: 20 },
+        { id: 't2_20', label: 'ช่อง 2 (แบงก์ 20)', val: 200, denom: 20 },
+        { id: 't3_20', label: 'ช่อง 3 (แบงก์ 20)', val: 200, denom: 20 },
+        { id: 't4_100', label: 'ช่อง 4 (แบงก์ 100)', val: 1000, denom: 100 },
+        { id: 't5_100', label: 'ช่อง 5 (แบงก์ 100)', val: 1000, denom: 100 },
+        { id: 't6_100', label: 'ช่อง 6 (แบงก์ 100)', val: 1000, denom: 100 },
+        { id: 't7_100', label: 'ช่อง 7 (แบงก์ 100)', val: 1000, denom: 100 },
+        { id: 't8_100', label: 'ช่อง 8 (แบงก์ 100)', val: 1000, denom: 100 }
+      ];
       
       const getDenomColor = (val) => {
         if(val === 1000) return 'bg-b1000'; if(val === 500) return 'bg-b500';
@@ -51,6 +72,7 @@
       // --- Action Tab State (รับ/ทอน) ---
       const [actionMode, setActionMode] = useState('receive'); // receive, change
       const [currentTx, setCurrentTx] = useState({ receive: 0, change: 0 });
+      const [currentTxDetails, setCurrentTxDetails] = useState({ receive: {}, change: {} });
 
       // --- Calculations ---
       const calcTotal = (obj) => Object.entries(obj).reduce((sum, [val, qty]) => sum + (parseFloat(val) * (qty||0)), 0);
@@ -58,7 +80,8 @@
       
       const pos1Total = calcTotal(pos1);
       const pos2Total = calcTotal(pos2);
-      const tidelTotal = (tidel[20] * 200) + (tidel[100] * 10000); // หลอดละ 200, มัดละ 10,000
+      
+      const tidelTotal = tidelTubesConfig.reduce((sum, tube) => sum + ((tidel[tube.id] || 0) * tube.val), 0);
       const underTotal = parseFloat(underMachine) || 0;
       const grandTotal = pos1Total + pos2Total + tidelTotal + underTotal;
 
@@ -85,71 +108,147 @@
           receive: actionMode === 'receive' ? prev.receive + val : prev.receive,
           change: actionMode === 'change' ? prev.change + val : prev.change
         }));
+
+        setCurrentTxDetails(prev => ({
+          ...prev,
+          [actionMode]: { ...prev[actionMode], [val]: (prev[actionMode][val] || 0) + 1 }
+        }));
+      };
+
+      // ยกเลิกบิลปัจจุบันที่กดผิด
+      const cancelTransaction = () => {
+        if(currentTx.receive === 0 && currentTx.change === 0) return;
+
+        const revertFn = (prev) => {
+           const next = { ...prev };
+           // คืนค่ารับ (ลบออก)
+           Object.entries(currentTxDetails.receive).forEach(([val, qty]) => {
+              next[val] = Math.max(0, next[val] - qty);
+           });
+           // คืนค่าทอน (บวกกลับ)
+           Object.entries(currentTxDetails.change).forEach(([val, qty]) => {
+              next[val] = next[val] + qty;
+           });
+           return next;
+        };
+
+        if (activePos === 'pos1') setPos1(revertFn);
+        else setPos2(revertFn);
+
+        setCurrentTx({ receive: 0, change: 0 });
+        setCurrentTxDetails({ receive: {}, change: {} });
       };
 
       const clearTransaction = () => {
         if(currentTx.receive > 0 || currentTx.change > 0) {
-          addLog(`${activePos.toUpperCase()} บิลล่าสุด: รับ ฿${currentTx.receive} | ทอน ฿${currentTx.change}`);
+          addLog(`${activePos.toUpperCase()} จบบิล: รับ ฿${currentTx.receive} | ทอน ฿${currentTx.change}`);
         }
         setCurrentTx({ receive: 0, change: 0 });
+        setCurrentTxDetails({ receive: {}, change: {} });
+      };
+
+      // สร้างข้อความรายละเอียดแบงก์
+      const renderTxDetails = (details) => {
+         const entries = Object.entries(details).filter(([_, q]) => q > 0);
+         if (entries.length === 0) return "-";
+         return entries.map(([val, q]) => `${val>=1?val:val*100+'ส'}x${q}`).join(', ');
       };
 
       // --- Exchange State ---
-      const [exType, setExType] = useState('tidel_tube'); // tidel_tube, internal_under, draft_tidel
-      const [exPos, setExPos] = useState('pos1'); // เครื่องที่ขอแลก
+      const [exType, setExType] = useState('tidel_tube'); 
+      const [exPos, setExPos] = useState('pos1'); 
       const [exPayDenom, setExPayDenom] = useState(1000);
       const [exPayQty, setExPayQty] = useState('');
+      const [exGetTube, setExGetTube] = useState('t1_20');
       const [exGetDenom, setExGetDenom] = useState(20);
       const [exGetQty, setExGetQty] = useState('');
+      const [draftAmounts, setDraftAmounts] = useState({ 1000: '', 500: '', 100: '', 50: '', 20: '' });
 
       const executeExchange = () => {
+        if(exType === 'draft_tidel') {
+           // ฝากลง Tidel (ดราฟ)
+           const drawerSetter = exPos === 'pos1' ? setPos1 : setPos2;
+           const drawerState = exPos === 'pos1' ? pos1 : pos2;
+           
+           let totalDraft = 0;
+           let hasError = false;
+           let draftDetails = [];
+
+           Object.entries(draftAmounts).forEach(([denom, qtyStr]) => {
+             const qty = parseInt(qtyStr) || 0;
+             if (qty > 0) {
+               if (drawerState[denom] < qty) {
+                 alert(`แบงก์ ${denom} ในลิ้นชัก ${exPos.toUpperCase()} มีไม่พอ!`);
+                 hasError = true;
+               }
+               totalDraft += qty * parseInt(denom);
+               draftDetails.push(`${denom}x${qty}`);
+             }
+           });
+
+           if (hasError || totalDraft === 0) return;
+
+           drawerSetter(p => {
+             const next = { ...p };
+             Object.entries(draftAmounts).forEach(([denom, qtyStr]) => {
+               const qty = parseInt(qtyStr) || 0;
+               if (qty > 0) next[denom] -= qty;
+             });
+             return next;
+           });
+
+           addLog(`🔽 ดราฟเงินลง Tidel: จาก ${exPos.toUpperCase()} รวม ฿${formatCurr(totalDraft)} (${draftDetails.join(', ')})`);
+           setDraftAmounts({ 1000: '', 500: '', 100: '', 50: '', 20: '' });
+           alert('ดราฟเงินสำเร็จ!');
+           setActiveTab('count');
+           return;
+        }
+
+        // สำหรับแลกเปลี่ยนปกติ
         const payQ = parseInt(exPayQty) || 0;
         const getQ = parseInt(exGetQty) || 0;
-        if(payQ <= 0 || getQ <= 0) return alert('กรุณาระบุจำนวนให้ถูกต้อง');
+        if(getQ <= 0) return alert('กรุณาระบุจำนวนที่จะรับให้ถูกต้อง');
 
-        // ตรวจสอบยอดรวมที่จ่ายและรับว่าเท่ากันหรือไม่
         let payValue = exPayDenom * payQ;
         let getValue = 0;
 
         if(exType === 'tidel_tube') {
-          getValue = exGetDenom == 100 ? getQ * 10000 : getQ * 200;
+          const tubeConfig = tidelTubesConfig.find(t => t.id === exGetTube);
+          getValue = tubeConfig.val * getQ;
         } else {
           getValue = exGetDenom * getQ;
         }
 
-        if(payValue !== getValue && exType !== 'draft_tidel') {
-          if(!window.confirm(`ยอดแลกไม่เท่ากัน! คุณจ่าย ฿${payValue} แต่ได้เงิน ฿${getValue} ยืนยันที่จะทำรายการไหม?`)) return;
+        // ตรวจยอดเฉพาะเมื่อมีการแลกเงินสองฝั่ง (POS1 ดึง Tidel โดยตรงไม่ต้องเช็ค payValue)
+        if(exType !== 'tidel_tube' || exPos === 'pos2') {
+          if(payQ <= 0) return alert('กรุณาระบุจำนวนที่จะจ่ายให้ถูกต้อง');
+          if(payValue !== getValue) {
+            if(!window.confirm(`ยอดแลกไม่เท่ากัน! คุณจ่าย ฿${payValue} แต่ได้เงิน ฿${getValue} ยืนยันที่จะทำรายการไหม?`)) return;
+          }
         }
 
-        // Logic การแลกเงินแบบ 2 ต่อ
         if(exType === 'tidel_tube') {
-          // ขอแลกหลอด Tidel
-          const billsInTube = exGetDenom == 100 ? 100 : 10; // มัด100=100ใบ, หลอด20=10ใบ
+          const tubeConfig = tidelTubesConfig.find(t => t.id === exGetTube);
+          const billsInTube = tubeConfig.denom === 100 ? 10 : 10; 
+          
+          if(tidel[exGetTube] < getQ) return alert('จำนวนหลอดในช่อง Tidel ที่เลือกมีไม่พอ!');
 
           if (exPos === 'pos2') {
             // POS2 แลก Tidel (POS2 -> POS1 -> Tidel -> POS1 -> POS2)
             if (pos2[exPayDenom] < payQ) return alert('เงินในลิ้นชัก POS 2 ไม่พอจ่าย!');
             
-            // 1. POS2 หักแบงก์จ่าย
             setPos2(p => ({ ...p, [exPayDenom]: p[exPayDenom] - payQ }));
-            // 2. POS1 รับแบงก์เก็บไว้ในลิ้นชัก
             setPos1(p => ({ ...p, [exPayDenom]: p[exPayDenom] + payQ }));
-            // 3. หักหลอดออกจาก Tidel (ถ้ามีการจด Tidel)
-            setTidel(p => ({ ...p, [exGetDenom]: Math.max(0, p[exGetDenom] - getQ) }));
-            // 4. POS2 ได้แบงก์ย่อยเข้าลิ้นชักโดยตรง (ฉีกหลอดเข้าลิ้นชัก)
-            setPos2(p => ({ ...p, [exGetDenom]: p[exGetDenom] + (billsInTube * getQ) }));
+            setTidel(p => ({ ...p, [exGetTube]: Math.max(0, p[exGetTube] - getQ) }));
+            setPos2(p => ({ ...p, [tubeConfig.denom]: p[tubeConfig.denom] + (billsInTube * getQ) }));
             
-            addLog(`🔄 POS2 แลกไทเดน (ผ่าน POS1): POS2 จ่ายแบงก์ ${exPayDenom}(${payQ}ใบ) -> POS1 | ดึงหลอด ${exGetDenom}(${getQ}หลอด) -> ใส่ POS2`);
-          
+            addLog(`🔄 POS2 แลกไทเดน (ผ่าน POS1): POS2 จ่าย ${exPayDenom}(${payQ}ใบ) -> POS1 | ดึงหลอด ${exGetTube}(${getQ}หลอด) -> ใส่ POS2`);
           } else {
-            // POS1 แลก Tidel โดยตรง
-            if (pos1[exPayDenom] < payQ) return alert('เงินในลิ้นชัก POS 1 ไม่พอจ่าย!');
+            // POS1 ดึง Tidel โดยตรง (ไม่ต้องจ่ายเข้า POS)
+            setTidel(p => ({ ...p, [exGetTube]: Math.max(0, p[exGetTube] - getQ) }));
+            setPos1(p => ({ ...p, [tubeConfig.denom]: p[tubeConfig.denom] + (billsInTube * getQ) }));
             
-            setPos1(p => ({ ...p, [exPayDenom]: p[exPayDenom] - payQ }));
-            setTidel(p => ({ ...p, [exGetDenom]: Math.max(0, p[exGetDenom] - getQ) }));
-            setPos1(p => ({ ...p, [exGetDenom]: p[exGetDenom] + (billsInTube * getQ) }));
-            
-            addLog(`🔄 POS1 แลกไทเดน: จ่ายแบงก์ ${exPayDenom}(${payQ}ใบ) | ฉีกหลอด ${exGetDenom}(${getQ}หลอด) ใส่ลิ้นชัก`);
+            addLog(`🔄 POS1 ดึงหลอดไทเดน: ช่อง ${exGetTube} จำนวน ${getQ} หลอด ใส่ลิ้นชัก`);
           }
         } 
         else if (exType === 'internal_under') {
@@ -160,34 +259,21 @@
           if (drawerState[exPayDenom] < payQ) return alert(`เงินในลิ้นชัก ${exPos.toUpperCase()} ไม่พอจ่าย!`);
           
           drawerSetter(p => ({ ...p, [exPayDenom]: p[exPayDenom] - payQ, [exGetDenom]: p[exGetDenom] + getQ }));
-          
-          // นำแบงก์ใหญ่เก็บใต้เครื่อง และหักเงินย่อยออกจากใต้เครื่อง
           setUnderMachine(p => parseFloat(p||0) + payValue - getValue);
 
-          addLog(`📥 ${exPos.toUpperCase()} แลกใต้เครื่อง: จ่ายแบงก์ ${exPayDenom} นำไปเก็บ | หยิบ ${exGetDenom}(${getQ}ใบ) มาทอน`);
-        }
-        else if (exType === 'draft_tidel') {
-          // ดราฟลง Tidel (นำเงินเข้าตู้เซฟ)
-          const drawerSetter = exPos === 'pos1' ? setPos1 : setPos2;
-          const drawerState = exPos === 'pos1' ? pos1 : pos2;
-
-          if (drawerState[exPayDenom] < payQ) return alert(`เงินในลิ้นชัก ${exPos.toUpperCase()} ไม่พอ!`);
-          
-          drawerSetter(p => ({ ...p, [exPayDenom]: p[exPayDenom] - payQ }));
-          // Note: เราไม่ได้นับเงินสดดราฟใน state tidel เพราะตู้เซฟเก็บแล้วเก็บเลย จะนับแค่หลอดที่เหลือ
-          addLog(`🔽 ดราฟเงินลง Tidel: จาก ${exPos.toUpperCase()} แบงก์ ${exPayDenom} จำนวน ${payQ} ใบ`);
+          addLog(`📥 ${exPos.toUpperCase()} แลกใต้เครื่อง: จ่าย ${exPayDenom}(${payQ}) นำไปเก็บ | หยิบ ${exGetDenom}(${getQ}ใบ) มาทอน`);
         }
 
         setExPayQty(''); setExGetQty('');
-        alert('ทำรายการโอน/แลกเงินเรียบร้อย!');
-        setActiveTab('count'); // ย้ายไปหน้าตรวจนับเพื่อให้เห็นผลลัพธ์
+        alert('ทำรายการเรียบร้อย!');
+        setActiveTab('count'); 
       };
 
       return (
-        <div className="flex flex-col h-screen w-full max-w-lg mx-auto bg-white shadow-xl overflow-hidden relative">
+        <div className="flex flex-col h-screen w-full max-w-lg mx-auto bg-slate-100 shadow-xl overflow-hidden relative">
           
           {/* Top Header */}
-          <div className="bg-slate-800 text-white p-3 flex justify-between items-center z-10">
+          <div className="bg-slate-800 text-white p-3 flex justify-between items-center z-10 shrink-0">
             <div>
               <h1 className="font-bold text-lg">💰 POS Manager</h1>
               <p className="text-[10px] text-slate-300">ตัวช่วยจำเงินสด POS1 / POS2</p>
@@ -198,27 +284,27 @@
             </div>
           </div>
 
-          {/* Main Content */}
-          <div className="flex-1 overflow-y-auto pb-20">
+          {/* Main Content Area (Scrollable) */}
+          <div className="flex-1 overflow-y-auto pb-24">
             
             {/* ---------------- TAB 1: หน้าขาย (Action) ---------------- */}
             {activeTab === 'action' && (
-              <div className="p-3 flex flex-col h-full bg-slate-50">
+              <div className="p-3 flex flex-col min-h-full">
                 
                 {/* POS Selector */}
-                <div className="flex bg-white rounded-lg p-1 shadow-sm border border-slate-200 mb-3">
+                <div className="flex bg-white rounded-lg p-1 shadow-sm border border-slate-200 mb-3 shrink-0">
                   <button onClick={() => { setActivePos('pos1'); clearTransaction(); }} className={`flex-1 py-2 font-bold rounded-md text-sm ${activePos === 'pos1' ? 'bg-blue-600 text-white shadow' : 'text-slate-500'}`}>💻 เครื่อง POS 1</button>
                   <button onClick={() => { setActivePos('pos2'); clearTransaction(); }} className={`flex-1 py-2 font-bold rounded-md text-sm ${activePos === 'pos2' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500'}`}>💻 เครื่อง POS 2</button>
                 </div>
 
-                <div className="flex justify-between items-end mb-3">
+                <div className="flex justify-between items-end mb-3 shrink-0">
                   <div className="text-sm font-bold text-slate-600">
                     ลิ้นชัก {activePos.toUpperCase()}: <span className="text-blue-600 text-lg">฿{formatCurr(activePos === 'pos1' ? pos1Total : pos2Total)}</span>
                   </div>
                 </div>
 
                 {/* Mode Selector */}
-                <div className="flex gap-2 mb-4">
+                <div className="flex gap-2 mb-3 shrink-0">
                   <button onClick={() => setActionMode('receive')} className={`flex-1 py-3 rounded-xl font-bold text-lg transition-all ${actionMode === 'receive' ? 'bg-emerald-500 text-white shadow-lg ring-2 ring-emerald-300' : 'bg-white text-slate-500 border border-slate-200'}`}>
                     📥 รับเงินลูกค้า
                   </button>
@@ -227,20 +313,27 @@
                   </button>
                 </div>
 
-                {/* Live Monitor */}
-                <div className="bg-slate-800 rounded-xl shadow-md p-3 mb-4 flex justify-between items-center text-white">
-                  <div>
-                    <div className="text-xs text-emerald-400 font-bold">รับ: ฿{currentTx.receive}</div>
-                    <div className="text-xs text-red-400 font-bold">ทอน: ฿{currentTx.change}</div>
-                    <div className="text-sm font-bold mt-1">ยอดบิลสุทธิ: ฿{currentTx.receive - currentTx.change}</div>
+                {/* Live Monitor + Details */}
+                <div className="bg-slate-800 rounded-xl shadow-md p-3 mb-4 text-white shrink-0">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <div className="text-xs text-emerald-400 font-bold">รับ: ฿{currentTx.receive} <span className="text-[10px] font-normal text-slate-400 ml-1">({renderTxDetails(currentTxDetails.receive)})</span></div>
+                      <div className="text-xs text-red-400 font-bold">ทอน: ฿{currentTx.change} <span className="text-[10px] font-normal text-slate-400 ml-1">({renderTxDetails(currentTxDetails.change)})</span></div>
+                      <div className="text-sm font-bold mt-1 text-blue-300">ยอดบิลสุทธิ: ฿{currentTx.receive - currentTx.change}</div>
+                    </div>
                   </div>
-                  <button onClick={clearTransaction} className="bg-white text-slate-800 px-4 py-2 rounded-lg font-bold text-sm shadow hover:bg-slate-100 active:scale-95">
-                    จบลูกค้า (ล้าง)
-                  </button>
+                  <div className="flex gap-2 mt-2 pt-2 border-t border-slate-700">
+                    <button onClick={cancelTransaction} className="flex-1 bg-slate-600 text-white py-2 rounded-lg font-bold text-xs shadow hover:bg-slate-500 active:scale-95">
+                      ❌ ยกเลิก (กดผิด)
+                    </button>
+                    <button onClick={clearTransaction} className="flex-1 bg-emerald-500 text-white py-2 rounded-lg font-bold text-xs shadow hover:bg-emerald-400 active:scale-95">
+                      ✅ จบลูกค้า (ขึ้นบิลใหม่)
+                    </button>
+                  </div>
                 </div>
 
                 {/* Denom Keyboard */}
-                <div className="grid grid-cols-3 gap-3 flex-1 content-start">
+                <div className="grid grid-cols-3 gap-3 flex-1 pb-4">
                   {denoms.map(d => {
                     const drawerData = activePos === 'pos1' ? pos1 : pos2;
                     return (
@@ -250,7 +343,7 @@
                         className={`btn-press rounded-xl h-20 flex flex-col justify-center items-center shadow-md transition-all ${getDenomColor(d)}`}
                       >
                         <span className="font-bold text-2xl">{d >= 1 ? d : `${d * 100} สต.`}</span>
-                        <span className="text-[10px] opacity-90 font-medium">มีในเก๊ะ: {drawerData[d]} ใบ</span>
+                        <span className="text-[10px] opacity-90 font-medium">มีในเก๊ะ: {drawerData[d]}</span>
                       </button>
                     );
                   })}
@@ -266,67 +359,71 @@
                   <span>💡</span> เพิ่ม/ลด จำนวนใบได้ตลอดเวลา (กด + / - หรือคลิกที่ตัวเลขเพื่อพิมพ์)
                 </div>
 
-                {/* Drawer POS 1 */}
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                  <div className="bg-blue-600 text-white p-2 font-bold flex justify-between">
-                    <span>1. ลิ้นชัก POS 1</span>
-                    <span>฿{formatCurr(pos1Total)}</span>
-                  </div>
-                  <div className="p-2 grid grid-cols-2 gap-2">
-                    {denoms.map(d => (
-                      <div key={`p1-${d}`} className="flex justify-between items-center bg-slate-50 p-1 rounded border border-slate-200">
-                        <div className={`w-8 text-center text-xs font-bold rounded ${getDenomColor(d)}`}>{d}</div>
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => setPos1(p => ({...p, [d]: Math.max(0, p[d]-1)}))} className="w-6 h-6 bg-slate-200 rounded text-red-600 font-bold">-</button>
-                          <input type="number" value={pos1[d] === 0 ? '' : pos1[d]} onChange={(e) => setPos1(p => ({...p, [d]: e.target.value === '' ? 0 : parseInt(e.target.value)}))} className="w-10 text-center font-bold outline-none bg-transparent" placeholder="0" />
-                          <button onClick={() => setPos1(p => ({...p, [d]: p[d]+1}))} className="w-6 h-6 bg-slate-200 rounded text-emerald-600 font-bold">+</button>
+                {/* Drawers Container */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Drawer POS 1 */}
+                  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div className="bg-blue-600 text-white p-2 font-bold flex justify-between">
+                      <span>1. ลิ้นชัก POS 1</span>
+                      <span>฿{formatCurr(pos1Total)}</span>
+                    </div>
+                    <div className="p-2 space-y-1">
+                      {denoms.map(d => (
+                        <div key={`p1-${d}`} className="flex justify-between items-center bg-slate-50 p-1 rounded border border-slate-200">
+                          <div className={`w-10 text-center text-xs font-bold py-1 rounded ${getDenomColor(d)}`}>{d}</div>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => setPos1(p => ({...p, [d]: Math.max(0, p[d]-1)}))} className="w-8 h-8 bg-slate-200 rounded text-red-600 font-bold text-lg">-</button>
+                            <input type="number" value={pos1[d] === 0 ? '' : pos1[d]} onChange={(e) => setPos1(p => ({...p, [d]: e.target.value === '' ? 0 : parseInt(e.target.value)}))} className="w-12 text-center font-bold outline-none bg-transparent" placeholder="0" />
+                            <button onClick={() => setPos1(p => ({...p, [d]: p[d]+1}))} className="w-8 h-8 bg-slate-200 rounded text-emerald-600 font-bold text-lg">+</button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
 
-                {/* Drawer POS 2 */}
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                  <div className="bg-indigo-600 text-white p-2 font-bold flex justify-between">
-                    <span>2. ลิ้นชัก POS 2</span>
-                    <span>฿{formatCurr(pos2Total)}</span>
-                  </div>
-                  <div className="p-2 grid grid-cols-2 gap-2">
-                    {denoms.map(d => (
-                      <div key={`p2-${d}`} className="flex justify-between items-center bg-slate-50 p-1 rounded border border-slate-200">
-                        <div className={`w-8 text-center text-xs font-bold rounded ${getDenomColor(d)}`}>{d}</div>
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => setPos2(p => ({...p, [d]: Math.max(0, p[d]-1)}))} className="w-6 h-6 bg-slate-200 rounded text-red-600 font-bold">-</button>
-                          <input type="number" value={pos2[d] === 0 ? '' : pos2[d]} onChange={(e) => setPos2(p => ({...p, [d]: e.target.value === '' ? 0 : parseInt(e.target.value)}))} className="w-10 text-center font-bold outline-none bg-transparent" placeholder="0" />
-                          <button onClick={() => setPos2(p => ({...p, [d]: p[d]+1}))} className="w-6 h-6 bg-slate-200 rounded text-emerald-600 font-bold">+</button>
+                  {/* Drawer POS 2 */}
+                  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div className="bg-indigo-600 text-white p-2 font-bold flex justify-between">
+                      <span>2. ลิ้นชัก POS 2</span>
+                      <span>฿{formatCurr(pos2Total)}</span>
+                    </div>
+                    <div className="p-2 space-y-1">
+                      {denoms.map(d => (
+                        <div key={`p2-${d}`} className="flex justify-between items-center bg-slate-50 p-1 rounded border border-slate-200">
+                          <div className={`w-10 text-center text-xs font-bold py-1 rounded ${getDenomColor(d)}`}>{d}</div>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => setPos2(p => ({...p, [d]: Math.max(0, p[d]-1)}))} className="w-8 h-8 bg-slate-200 rounded text-red-600 font-bold text-lg">-</button>
+                            <input type="number" value={pos2[d] === 0 ? '' : pos2[d]} onChange={(e) => setPos2(p => ({...p, [d]: e.target.value === '' ? 0 : parseInt(e.target.value)}))} className="w-12 text-center font-bold outline-none bg-transparent" placeholder="0" />
+                            <button onClick={() => setPos2(p => ({...p, [d]: p[d]+1}))} className="w-8 h-8 bg-slate-200 rounded text-emerald-600 font-bold text-lg">+</button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </div>
 
                 {/* Tidel & Under */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-4">
                   <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div className="bg-emerald-600 text-white p-2 font-bold text-sm">3. หลอด Tidel</div>
-                    <div className="p-2 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-slate-600">มัด 100</span>
-                        <input type="number" value={tidel[100] || ''} onChange={e => setTidel(p => ({...p, 100: parseInt(e.target.value)||0}))} className="w-12 text-center border rounded" placeholder="0" />
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-slate-600">หลอด 20</span>
-                        <input type="number" value={tidel[20] || ''} onChange={e => setTidel(p => ({...p, 20: parseInt(e.target.value)||0}))} className="w-12 text-center border rounded" placeholder="0" />
-                      </div>
+                    <div className="bg-emerald-600 text-white p-2 font-bold text-sm flex justify-between">
+                      <span>3. หลอด Tidel (8 ช่อง)</span>
+                      <span>฿{formatCurr(tidelTotal)}</span>
+                    </div>
+                    <div className="p-2 grid grid-cols-2 gap-2">
+                      {tidelTubesConfig.map(tube => (
+                        <div key={tube.id} className="flex justify-between items-center bg-slate-50 p-1 border rounded">
+                          <span className="text-[10px] font-bold text-slate-600">{tube.label}</span>
+                          <input type="number" value={tidel[tube.id] === 0 ? '' : tidel[tube.id]} onChange={e => setTidel(p => ({...p, [tube.id]: parseInt(e.target.value)||0}))} className="w-10 text-center border border-slate-300 rounded font-bold text-sm" placeholder="0" />
+                        </div>
+                      ))}
                     </div>
                   </div>
 
                   <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                     <div className="bg-amber-600 text-white p-2 font-bold text-sm">4. ใต้ลิ้นชัก</div>
                     <div className="p-2">
-                      <label className="text-[10px] text-slate-500 block mb-1">ยอดรวมเงินทอนสำรอง (บาท)</label>
-                      <input type="number" value={underMachine} onChange={e => setUnderMachine(e.target.value)} className="w-full text-right font-bold text-lg border-b-2 focus:border-amber-500 outline-none p-1" placeholder="0.00" />
+                      <label className="text-xs text-slate-500 block mb-1">ยอดรวมเงินทอนสำรอง (บาท)</label>
+                      <input type="number" value={underMachine} onChange={e => setUnderMachine(e.target.value)} className="w-full text-right font-bold text-xl border-b-2 focus:border-amber-500 outline-none p-1" placeholder="0.00" />
                     </div>
                   </div>
                 </div>
@@ -345,7 +442,7 @@
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">1. ต้องการทำอะไร?</label>
                       <select value={exType} onChange={e => setExType(e.target.value)} className="w-full p-2 border border-slate-300 rounded-lg font-bold text-blue-800 bg-blue-50">
-                        <option value="tidel_tube">ดึงหลอด/มัด จากตู้ Tidel (ซื้อหลอด)</option>
+                        <option value="tidel_tube">ดึงหลอด/มัด จากตู้ Tidel</option>
                         <option value="internal_under">แลกเงินย่อยกับใต้เครื่อง (เหรียญ/แบงก์)</option>
                         <option value="draft_tidel">ดราฟเงิน (ฝากเงินเข้าตู้ Tidel)</option>
                       </select>
@@ -354,43 +451,50 @@
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">2. เครื่องไหนเป็นคนทำรายการ?</label>
                       <select value={exPos} onChange={e => setExPos(e.target.value)} className="w-full p-2 border border-slate-300 rounded-lg">
-                        <option value="pos1">POS 1 (ทำรายการได้โดยตรง)</option>
-                        {exType !== 'draft_tidel' && <option value="pos2">POS 2 (ระบบจะส่งต่อผ่าน POS 1 ให้อัตโนมัติ)</option>}
+                        <option value="pos1">POS 1</option>
+                        <option value="pos2">POS 2 (ทำผ่าน POS 1 อัตโนมัติ)</option>
                       </select>
                     </div>
 
+                    {/* ซื้อหลอด Tidel */}
                     {exType === 'tidel_tube' && (
                       <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
                         <div className="text-xs font-bold text-emerald-600 mb-2">
-                          {exPos === 'pos2' ? 'แผนผัง: ลิ้นชัก POS2 -> ลิ้นชัก POS1 -> ดึงหลอด Tidel -> ฉีกใส่ลิ้นชัก POS2' : 'แผนผัง: ลิ้นชัก POS1 -> ดึงหลอด Tidel -> ฉีกใส่ลิ้นชัก POS1'}
+                          {exPos === 'pos2' ? 'แผนผัง: ลิ้นชัก POS2 -> ลิ้นชัก POS1 -> ดึงหลอด Tidel -> ฉีกใส่ลิ้นชัก POS2' : 'แผนผัง: POS1 ดึงหลอดจาก Tidel มาใส่ลิ้นชักโดยตรง (ไม่ต้องจ่ายเข้าเครื่อง)'}
                         </div>
+                        
+                        {/* ถ้าเป็น POS2 ต้องมีช่องให้จ่ายเงิน ถ้า POS1 ดึงได้เลย */}
+                        {exPos === 'pos2' && (
+                          <div className="flex gap-2">
+                            <div className="flex-1">
+                              <label className="block text-[10px] font-bold text-slate-500">จ่ายด้วยแบงก์ (จาก POS2)</label>
+                              <select value={exPayDenom} onChange={e => setExPayDenom(e.target.value)} className="w-full p-2 border rounded">
+                                <option value="1000">1000 บาท</option><option value="500">500 บาท</option><option value="100">100 บาท</option>
+                              </select>
+                            </div>
+                            <div className="w-24">
+                              <label className="block text-[10px] font-bold text-slate-500">จำนวน (ใบ)</label>
+                              <input type="number" value={exPayQty} onChange={e => setExPayQty(e.target.value)} className="w-full p-2 border rounded text-center" placeholder="0" />
+                            </div>
+                          </div>
+                        )}
+
                         <div className="flex gap-2">
                           <div className="flex-1">
-                            <label className="block text-[10px] font-bold text-slate-500">จ่ายด้วยแบงก์</label>
-                            <select value={exPayDenom} onChange={e => setExPayDenom(e.target.value)} className="w-full p-2 border rounded">
-                              <option value="1000">1000 บาท</option><option value="500">500 บาท</option><option value="100">100 บาท</option>
+                            <label className="block text-[10px] font-bold text-slate-500">ดึงหลอดจากช่อง</label>
+                            <select value={exGetTube} onChange={e => setExGetTube(e.target.value)} className="w-full p-2 border rounded">
+                              {tidelTubesConfig.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                             </select>
                           </div>
                           <div className="w-24">
-                            <label className="block text-[10px] font-bold text-slate-500">จำนวน (ใบ)</label>
-                            <input type="number" value={exPayQty} onChange={e => setExPayQty(e.target.value)} className="w-full p-2 border rounded text-center" placeholder="0" />
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <div className="flex-1">
-                            <label className="block text-[10px] font-bold text-slate-500">แลกเป็นหลอด</label>
-                            <select value={exGetDenom} onChange={e => setExGetDenom(e.target.value)} className="w-full p-2 border rounded">
-                              <option value="100">มัด 100 (10,000฿)</option><option value="20">หลอด 20 (200฿)</option>
-                            </select>
-                          </div>
-                          <div className="w-24">
-                            <label className="block text-[10px] font-bold text-slate-500">จำนวน (ชุด)</label>
+                            <label className="block text-[10px] font-bold text-slate-500">จำนวน (หลอด)</label>
                             <input type="number" value={exGetQty} onChange={e => setExGetQty(e.target.value)} className="w-full p-2 border rounded text-center" placeholder="0" />
                           </div>
                         </div>
                       </div>
                     )}
 
+                    {/* แลกเงินใต้เครื่อง */}
                     {exType === 'internal_under' && (
                       <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
                         <div className="text-xs font-bold text-amber-600 mb-2">
@@ -403,35 +507,32 @@
                               <option value="1000">1000 บาท</option><option value="500">500 บาท</option><option value="100">100 บาท</option>
                             </select>
                           </div>
-                          <div className="w-20"><input type="number" value={exPayQty} onChange={e => setExPayQty(e.target.value)} className="w-full p-2 border rounded mt-4 text-center" placeholder="ใบ" /></div>
+                          <div className="w-24"><label className="block text-[10px] font-bold text-slate-500">จำนวน (ใบ)</label><input type="number" value={exPayQty} onChange={e => setExPayQty(e.target.value)} className="w-full p-2 border rounded text-center" placeholder="0" /></div>
                         </div>
                         <div className="flex gap-2">
                           <div className="flex-1">
-                            <label className="block text-[10px] font-bold text-slate-500">สิ่งที่นำมาทอน</label>
+                            <label className="block text-[10px] font-bold text-slate-500">สิ่งที่นำมาทอนเข้าลิ้นชัก</label>
                             <select value={exGetDenom} onChange={e => setExGetDenom(e.target.value)} className="w-full p-2 border rounded">
                               {denoms.filter(d=>d<=100).map(d => <option key={d} value={d}>{d >= 1 ? `แบงก์/เหรียญ ${d}` : `${d*100} สต.`}</option>)}
                             </select>
                           </div>
-                          <div className="w-20"><input type="number" value={exGetQty} onChange={e => setExGetQty(e.target.value)} className="w-full p-2 border rounded mt-4 text-center" placeholder="ใบ/ชิ้น" /></div>
+                          <div className="w-24"><label className="block text-[10px] font-bold text-slate-500">จำนวน (ใบ/ชิ้น)</label><input type="number" value={exGetQty} onChange={e => setExGetQty(e.target.value)} className="w-full p-2 border rounded text-center" placeholder="0" /></div>
                         </div>
                       </div>
                     )}
 
+                    {/* ดราฟเงินลง Tidel */}
                     {exType === 'draft_tidel' && (
                       <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
-                         <div className="text-xs font-bold text-red-600 mb-2">แผนผัง: นำเงินจากลิ้นชัก {exPos.toUpperCase()} หยอดเข้าเซฟ Tidel</div>
-                         <div className="flex gap-2">
-                          <div className="flex-1">
-                            <label className="block text-[10px] font-bold text-slate-500">หยอดแบงก์</label>
-                            <select value={exPayDenom} onChange={e => setExPayDenom(e.target.value)} className="w-full p-2 border rounded">
-                              <option value="1000">1000 บาท</option><option value="500">500 บาท</option><option value="100">100 บาท</option>
-                            </select>
-                          </div>
-                          <div className="w-24">
-                            <label className="block text-[10px] font-bold text-slate-500">จำนวน (ใบ)</label>
-                            <input type="number" value={exPayQty} onChange={e => setExPayQty(e.target.value)} className="w-full p-2 border rounded text-center" placeholder="0" />
-                          </div>
-                        </div>
+                         <div className="text-xs font-bold text-red-600 mb-2">ระบุจำนวนแบงก์ที่จะนำจาก {exPos.toUpperCase()} หยอดลง Tidel</div>
+                         {[1000, 500, 100, 50, 20].map(d => (
+                           <div key={`draft-${d}`} className="flex justify-between items-center border-b border-slate-200 pb-1">
+                             <label className="text-sm font-bold text-slate-600">แบงก์ {d}</label>
+                             <div className="flex items-center gap-2">
+                               <input type="number" value={draftAmounts[d]} onChange={(e) => setDraftAmounts(p => ({...p, [d]: e.target.value}))} className="w-20 p-1 border border-slate-300 rounded text-center font-bold" placeholder="จำนวนใบ" />
+                             </div>
+                           </div>
+                         ))}
                       </div>
                     )}
 
@@ -461,7 +562,7 @@
           </div>
 
           {/* Bottom Tabs */}
-          <div className="bg-white border-t border-slate-200 absolute bottom-0 w-full flex justify-around pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+          <div className="bg-white border-t border-slate-200 absolute bottom-0 w-full flex justify-around pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20">
             <button onClick={() => setActiveTab('action')} className={`flex-1 flex flex-col items-center py-3 text-[10px] font-bold ${activeTab === 'action' ? 'text-blue-600' : 'text-slate-400'}`}>
               <span className="text-2xl mb-1">{activeTab === 'action' ? '🛍️' : '🛒'}</span>รับ/ทอน
             </button>
