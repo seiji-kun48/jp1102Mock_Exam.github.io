@@ -53,7 +53,7 @@
       }, []);
 
       // --- State Management ---
-      const [systemData, setSystemData] = useState({ cashSales: '', depositServices: '' });
+      const [systemData, setSystemData] = useState({ startingCash: '', cashSales: '', depositServices: '' });
       const [drawer, setDrawer] = useState({
         500: '', 100: '', 50: '', 20: '',
         10: '', 5: '', 2: '', 1: '', 0.5: '', 0.25: ''
@@ -77,7 +77,7 @@
       }, []);
 
       // --- Calculations ---
-      const systemExpected = (parseFloat(systemData.cashSales) || 0) + (parseFloat(systemData.depositServices) || 0);
+      const systemExpected = (parseFloat(systemData.startingCash) || 0) + (parseFloat(systemData.cashSales) || 0) + (parseFloat(systemData.depositServices) || 0);
       const drawerTotal = Object.entries(drawer).reduce((total, [denom, count]) => total + (parseFloat(denom) * (parseInt(count) || 0)), 0);
       
       const tidelTubesConfig = [
@@ -217,6 +217,10 @@
                   </div>
                   <div className="p-4 space-y-3 bg-indigo-50/30">
                     <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-1">เงินทอนเริ่มต้น (Starting Cash)</label>
+                      <input type="number" className="w-full p-2 border border-indigo-200 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-right font-bold text-indigo-900" placeholder="0.00" value={systemData.startingCash} onChange={(e) => handleInputChange(setSystemData)('startingCash', e.target.value)} />
+                    </div>
+                    <div>
                       <label className="block text-sm font-bold text-gray-700 mb-1">ยอดขายเงินสด</label>
                       <input type="number" className="w-full p-2 border border-indigo-200 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-right font-bold text-indigo-900" placeholder="0.00" value={systemData.cashSales} onChange={(e) => handleInputChange(setSystemData)('cashSales', e.target.value)} />
                     </div>
@@ -226,7 +230,7 @@
                     </div>
                     <div className="border-t border-indigo-200 pt-2 mt-2">
                       <div className="flex justify-between font-bold text-indigo-800">
-                        <span>รวมยอดระบบ:</span><span>฿{formatCurrency(systemExpected)}</span>
+                        <span>รวมเป้าหมายระบบ:</span><span>฿{formatCurrency(systemExpected)}</span>
                       </div>
                     </div>
                   </div>
