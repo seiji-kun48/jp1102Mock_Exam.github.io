@@ -2,664 +2,484 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ระบบสรุปยอดสิ้นกะ (Shift Survey)</title>
-  
-  <!-- โหลด Tailwind CSS -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>POS Cash Assistant</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- โหลด React และ ReactDOM -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  
-  <!-- โหลด Babel -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-  <!-- โหลด html2canvas -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-  
   <style>
-    ::-webkit-scrollbar { width: 8px; }
-    ::-webkit-scrollbar-track { background: #f1f1f1; }
-    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f1f5f9; overscroll-behavior-y: contain; }
+    /* สีของธนบัตรและเหรียญ */
+    .bg-b1000 { background-color: #94a3b8; color: white; border-bottom: 4px solid #64748b; }
+    .bg-b500 { background-color: #a855f7; color: white; border-bottom: 4px solid #7e22ce; }
+    .bg-b100 { background-color: #ef4444; color: white; border-bottom: 4px solid #b91c1c; }
+    .bg-b50 { background-color: #3b82f6; color: white; border-bottom: 4px solid #1d4ed8; }
+    .bg-b20 { background-color: #22c55e; color: white; border-bottom: 4px solid #15803d; }
+    .bg-coin { background-color: #fbbf24; color: #78350f; border-bottom: 4px solid #d97706; }
+    .btn-press:active { transform: translateY(4px); border-bottom-width: 0px; margin-top: 4px; }
   </style>
 </head>
-<body class="bg-gray-100">
+<body>
 
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
+    const { useState, useEffect } = React;
 
-    const ShiftSurvey = () => {
-      // --- Script Loading State ---
-      const [isReadyToCapture, setIsReadyToCapture] = useState(false);
+    const POSCashTracker = () => {
+      // --- Global UI State ---
+      const [activeTab, setActiveTab] = useState('action');
+      const [activePos, setActivePos] = useState('pos1'); // เครื่องที่กำลังโฟกัสทำงาน (pos1, pos2)
 
-      useEffect(() => {
-        if (window.html2canvas) {
-          setIsReadyToCapture(true);
-        } else {
-          const script = document.createElement('script');
-          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-          script.async = true;
-          script.onload = () => setIsReadyToCapture(true);
-          document.body.appendChild(script);
-        }
-      }, []);
+      // --- Inventories State ---
+      const defaultDrawer = { 1000:0, 500:0, 100:0, 50:0, 20:0, 10:0, 5:0, 2:0, 1:0, 0.5:0, 0.25:0 };
+      const [pos1, setPos1] = useState({...defaultDrawer});
+      const [pos2, setPos2] = useState({...defaultDrawer});
+      const [tidel, setTidel] = useState({ 100: 0, 20: 0 }); // นับเป็น มัด/หลอด
+      const [underMachine, setUnderMachine] = useState(''); // ยอดเงินใต้เครื่อง
+      const [logs, setLogs] = useState([]);
 
-      // --- Shift State Management ---
-      const [shiftActive, setShiftActive] = useState(false);
-      const [startingCashAmount, setStartingCashAmount] = useState(0);
-
-      // --- Form State Management ---
-      const [systemData, setSystemData] = useState({ cashSales: '', depositServices: '' });
-      const [drawer, setDrawer] = useState({
-        500: '', 100: '', 50: '', 20: '',
-        10: '', 5: '', 2: '', 1: '', 0.5: '', 0.25: ''
-      });
-      const [tidel, setTidel] = useState({
-        tube1_20: '', tube2_20: '', tube3_20: '',
-        tube4_100: '', tube5_100: '', tube6_100: '', tube7_100: '', tube8_100: ''
-      });
-      const [outsideCash, setOutsideCash] = useState({ amount: '', note: '' });
-      const [ePayments, setEPayments] = useState({ truewallet: '', wechat: '', alipay: '', alipayPlus: '', creditCard: '' });
-      const [otherServices, setOtherServices] = useState({ topupTrueWallet: '', bankDeposit: '', billPayment: '', other: '' });
-
-      // --- UI & Storage States ---
-      const [isDownloading, setIsDownloading] = useState(false);
-      const [showHistory, setShowHistory] = useState(false);
-      const [showAccumulator, setShowAccumulator] = useState(false);
-      const [savedLogs, setSavedLogs] = useState([]);
-      const [dailyLogs, setDailyLogs] = useState([]); // เก็บประวัติการสะสมยอดระหว่างวัน
-      const surveyRef = useRef(null);
-
-      // Load Storage
-      useEffect(() => {
-        const logs = JSON.parse(localStorage.getItem('posShiftLogs') || '[]');
-        setSavedLogs(logs);
-
-        const currentShift = JSON.parse(localStorage.getItem('posCurrentShift'));
-        if (currentShift && currentShift.active) {
-          setShiftActive(true);
-          setStartingCashAmount(currentShift.startingCash);
-        }
-
-        const dLogs = JSON.parse(localStorage.getItem('posDailyLogs') || '[]');
-        setDailyLogs(dLogs);
-      }, []);
-
-      // --- Accumulator States (สำหรับหน้าจอคีย์ยอดสะสม) ---
-      const [accPayType, setAccPayType] = useState('epayment_truewallet');
-      const [accPayAmount, setAccPayAmount] = useState('');
+      const denoms = [1000, 500, 100, 50, 20, 10, 5, 2, 1, 0.5, 0.25];
       
-      const [accSrvType, setAccSrvType] = useState('other_bankDeposit');
-      const [accSrvAmount, setAccSrvAmount] = useState('');
-
-      const typeLabels = {
-        'system_cashSales': 'ยอดขายเงินสด',
-        'epayment_truewallet': 'TrueWallet',
-        'epayment_wechat': 'WeChat Pay',
-        'epayment_alipay': 'Alipay',
-        'epayment_alipayPlus': 'Alipay+',
-        'epayment_creditCard': 'บัตรเครดิต',
-        'system_depositServices': 'บริการฝากเงิน (เข้าระบบ)',
-        'other_topupTrueWallet': 'เติมเงิน TrueWallet',
-        'other_bankDeposit': 'ฝากเงินธนาคาร',
-        'other_billPayment': 'จ่ายบิล',
-        'other_other': 'บริการอื่นๆ'
+      const getDenomColor = (val) => {
+        if(val === 1000) return 'bg-b1000'; if(val === 500) return 'bg-b500';
+        if(val === 100) return 'bg-b100'; if(val === 50) return 'bg-b50';
+        if(val === 20) return 'bg-b20'; return 'bg-coin';
       };
+
+      // --- Action Tab State (รับ/ทอน) ---
+      const [actionMode, setActionMode] = useState('receive'); // receive, change
+      const [currentTx, setCurrentTx] = useState({ receive: 0, change: 0 });
 
       // --- Calculations ---
-      const systemExpected = startingCashAmount + (parseFloat(systemData.cashSales) || 0) + (parseFloat(systemData.depositServices) || 0);
-      const drawerTotal = Object.entries(drawer).reduce((total, [denom, count]) => total + (parseFloat(denom) * (parseInt(count) || 0)), 0);
+      const calcTotal = (obj) => Object.entries(obj).reduce((sum, [val, qty]) => sum + (parseFloat(val) * (qty||0)), 0);
+      const formatCurr = (amt) => new Intl.NumberFormat('th-TH', { minimumFractionDigits: 0 }).format(amt);
       
-      const tidelTubesConfig = [
-        { id: 'tube1_20', label: 'ช่อง 20', multiplier: 200 }, { id: 'tube2_20', label: 'ช่อง 20', multiplier: 200 }, { id: 'tube3_20', label: 'ช่อง 20', multiplier: 200 },
-        { id: 'tube4_100', label: 'ช่อง 100', multiplier: 100 }, { id: 'tube5_100', label: 'ช่อง 100', multiplier: 100 }, { id: 'tube6_100', label: 'ช่อง 100', multiplier: 100 },
-        { id: 'tube7_100', label: 'ช่อง 100', multiplier: 100 }, { id: 'tube8_100', label: 'ช่อง 100', multiplier: 100 }
-      ];
-      const tidelTotal = tidelTubesConfig.reduce((total, tube) => total + (tube.multiplier * (parseInt(tidel[tube.id]) || 0)), 0);
-      
-      const outsideTotal = parseFloat(outsideCash.amount) || 0;
-      const actualTotal = drawerTotal + tidelTotal + outsideTotal;
-      const variance = actualTotal - systemExpected;
-      
-      const ePaymentTotal = Object.values(ePayments).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
-      const otherServicesTotal = Object.values(otherServices).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+      const pos1Total = calcTotal(pos1);
+      const pos2Total = calcTotal(pos2);
+      const tidelTotal = (tidel[20] * 200) + (tidel[100] * 10000); // หลอดละ 200, มัดละ 10,000
+      const underTotal = parseFloat(underMachine) || 0;
+      const grandTotal = pos1Total + pos2Total + tidelTotal + underTotal;
 
-      // --- Handlers ---
-      const resetInputs = () => {
-        setSystemData({ cashSales: '', depositServices: '' });
-        setDrawer({ 500: '', 100: '', 50: '', 20: '', 10: '', 5: '', 2: '', 1: '', 0.5: '', 0.25: '' });
-        setTidel({ tube1_20: '', tube2_20: '', tube3_20: '', tube4_100: '', tube5_100: '', tube6_100: '', tube7_100: '', tube8_100: '' });
-        setOutsideCash({ amount: '', note: '' });
-        setEPayments({ truewallet: '', wechat: '', alipay: '', alipayPlus: '', creditCard: '' });
-        setOtherServices({ topupTrueWallet: '', bankDeposit: '', billPayment: '', other: '' });
+      const addLog = (msg) => {
+        setLogs(prev => [{ time: new Date().toLocaleTimeString('th-TH'), msg }, ...prev].slice(0, 50));
       };
 
-      const handleInputChange = (setter) => (field, value) => {
-        if (value === '' || !isNaN(value)) setter(prev => ({ ...prev, [field]: value }));
-      };
-
-      const handleTextChange = (setter) => (field, value) => {
-        setter(prev => ({ ...prev, [field]: value }));
-      };
-
-      const formatCurrency = (amount) => new Intl.NumberFormat('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
-
-      // --- Accumulator Handlers ---
-      const addAccumulatorLog = (typeString, amountStr, setAmountInput) => {
-        const amount = parseFloat(amountStr);
-        if (isNaN(amount) || amount <= 0) return;
-
-        const [group, field] = typeString.split('_');
-        const label = typeLabels[typeString];
-        const newLog = { id: Date.now(), group, field, label, amount, timestamp: new Date().toLocaleTimeString('th-TH') };
-        
-        const updatedLogs = [newLog, ...dailyLogs];
-        setDailyLogs(updatedLogs);
-        localStorage.setItem('posDailyLogs', JSON.stringify(updatedLogs));
-
-        // อัปเดตยอดลงในหน้าหลักอัตโนมัติ
-        if (group === 'system') setSystemData(p => ({ ...p, [field]: (parseFloat(p[field]) || 0) + amount }));
-        if (group === 'epayment') setEPayments(p => ({ ...p, [field]: (parseFloat(p[field]) || 0) + amount }));
-        if (group === 'other') setOtherServices(p => ({ ...p, [field]: (parseFloat(p[field]) || 0) + amount }));
-
-        setAmountInput(''); // เคลียร์ช่องพิมพ์
-      };
-
-      const removeAccumulatorLog = (logId) => {
-        const logToRemove = dailyLogs.find(l => l.id === logId);
-        if (!logToRemove) return;
-
-        const updatedLogs = dailyLogs.filter(l => l.id !== logId);
-        setDailyLogs(updatedLogs);
-        localStorage.setItem('posDailyLogs', JSON.stringify(updatedLogs));
-
-        // หักยอดออกจากหน้าหลัก
-        const { group, field, amount } = logToRemove;
-        const subtract = (prev) => {
-          let current = parseFloat(prev[field]) || 0;
-          let result = Math.max(0, current - amount);
-          return { ...prev, [field]: result === 0 ? '' : result };
+      // --- Action Handlers (กดปุ่มรับ/ทอน) ---
+      const handleActionClick = (val) => {
+        const updateFn = (prev) => {
+          const currentQty = prev[val] || 0;
+          if (actionMode === 'receive') {
+            return { ...prev, [val]: currentQty + 1 };
+          } else {
+            return { ...prev, [val]: Math.max(0, currentQty - 1) };
+          }
         };
 
-        if (group === 'system') setSystemData(subtract);
-        if (group === 'epayment') setEPayments(subtract);
-        if (group === 'other') setOtherServices(subtract);
+        if (activePos === 'pos1') setPos1(updateFn);
+        else setPos2(updateFn);
+
+        setCurrentTx(prev => ({
+          ...prev,
+          receive: actionMode === 'receive' ? prev.receive + val : prev.receive,
+          change: actionMode === 'change' ? prev.change + val : prev.change
+        }));
       };
 
-      // --- System Flow Handlers ---
-      const handleSaveToLocal = () => {
-        if (window.confirm('ต้องการบันทึกข้อมูลการตรวจนับนี้ลงในประวัติใช่หรือไม่?')) {
-          const newLog = {
-            id: Date.now(),
-            date: new Date().toLocaleString('th-TH'),
-            systemExpected, actualTotal, variance,
-            drawerTotal, tidelTotal, outsideTotal, ePaymentTotal, otherServicesTotal
-          };
-          const updatedLogs = [newLog, ...savedLogs].slice(0, 30);
-          localStorage.setItem('posShiftLogs', JSON.stringify(updatedLogs));
-          setSavedLogs(updatedLogs);
-          alert('💾 บันทึกประวัติเรียบร้อยแล้ว');
+      const clearTransaction = () => {
+        if(currentTx.receive > 0 || currentTx.change > 0) {
+          addLog(`${activePos.toUpperCase()} บิลล่าสุด: รับ ฿${currentTx.receive} | ทอน ฿${currentTx.change}`);
         }
+        setCurrentTx({ receive: 0, change: 0 });
       };
 
-      const handleStartShift = () => {
-        if (actualTotal === 0 && !window.confirm('ยอดเงินทอนเริ่มต้นเป็น 0 บาท ยืนยันที่จะเริ่มกะใช่หรือไม่?')) {
-          return;
-        }
-        if (window.confirm(`ยืนยันการเริ่มกะด้วยยอดเงินทอนเริ่มต้น ฿${formatCurrency(actualTotal)} ใช่หรือไม่?`)) {
-          setStartingCashAmount(actualTotal);
-          setShiftActive(true);
-          localStorage.setItem('posCurrentShift', JSON.stringify({ active: true, startingCash: actualTotal }));
-          
-          resetInputs(); 
-          setDailyLogs([]); // ล้างประวัติสะสมยอดสำหรับกะใหม่
-          localStorage.removeItem('posDailyLogs');
-          
-          alert('✅ เริ่มกะสำเร็จ! ระบบบันทึกยอดเงินทอนเริ่มต้นไว้แล้ว');
-        }
-      };
+      // --- Exchange State ---
+      const [exType, setExType] = useState('tidel_tube'); // tidel_tube, internal_under, draft_tidel
+      const [exPos, setExPos] = useState('pos1'); // เครื่องที่ขอแลก
+      const [exPayDenom, setExPayDenom] = useState(1000);
+      const [exPayQty, setExPayQty] = useState('');
+      const [exGetDenom, setExGetDenom] = useState(20);
+      const [exGetQty, setExGetQty] = useState('');
 
-      const handleEndShift = () => {
-        if (window.confirm('ต้องการบันทึกการตรวจนับและปิดกะใช่หรือไม่?')) {
-          const newLog = {
-            id: Date.now(),
-            date: new Date().toLocaleString('th-TH'),
-            systemExpected, actualTotal, variance,
-            drawerTotal, tidelTotal, outsideTotal, ePaymentTotal, otherServicesTotal
-          };
-          const updatedLogs = [newLog, ...savedLogs].slice(0, 30);
-          localStorage.setItem('posShiftLogs', JSON.stringify(updatedLogs));
-          setSavedLogs(updatedLogs);
-          
-          setShiftActive(false);
-          setStartingCashAmount(0);
-          localStorage.removeItem('posCurrentShift');
-          resetInputs();
-          setDailyLogs([]);
-          localStorage.removeItem('posDailyLogs');
-          
-          alert('💾 บันทึกปิดกะสำเร็จ! สามารถดูประวัติได้ที่ปุ่ม "ดูประวัติ"');
-        }
-      };
+      const executeExchange = () => {
+        const payQ = parseInt(exPayQty) || 0;
+        const getQ = parseInt(exGetQty) || 0;
+        if(payQ <= 0 || getQ <= 0) return alert('กรุณาระบุจำนวนให้ถูกต้อง');
 
-      const handleDownloadImage = async () => {
-        if (!surveyRef.current) return;
-        if (!window.html2canvas) {
-          alert('ระบบกำลังโหลดเครื่องมือสร้างรูปภาพ กรุณารอสักครู่แล้วลองใหม่อีกครั้ง');
-          return;
+        // ตรวจสอบยอดรวมที่จ่ายและรับว่าเท่ากันหรือไม่
+        let payValue = exPayDenom * payQ;
+        let getValue = 0;
+
+        if(exType === 'tidel_tube') {
+          getValue = exGetDenom == 100 ? getQ * 10000 : getQ * 200;
+        } else {
+          getValue = exGetDenom * getQ;
         }
-        setIsDownloading(true);
-        try {
-          const canvas = await window.html2canvas(surveyRef.current, {
-            scale: 2,
-            backgroundColor: '#f3f4f6',
-            logging: false,
-            useCORS: true
-          });
-          const image = canvas.toDataURL('image/png');
-          const link = document.createElement('a');
-          link.href = image;
-          link.download = `Shift-Survey-${new Date().getTime()}.png`;
-          link.click();
-        } catch (error) {
-          console.error('Error generating image:', error);
-          alert('เกิดข้อผิดพลาดในการสร้างรูปภาพ');
-        } finally {
-          setIsDownloading(false);
+
+        if(payValue !== getValue && exType !== 'draft_tidel') {
+          if(!window.confirm(`ยอดแลกไม่เท่ากัน! คุณจ่าย ฿${payValue} แต่ได้เงิน ฿${getValue} ยืนยันที่จะทำรายการไหม?`)) return;
         }
+
+        // Logic การแลกเงินแบบ 2 ต่อ
+        if(exType === 'tidel_tube') {
+          // ขอแลกหลอด Tidel
+          const billsInTube = exGetDenom == 100 ? 100 : 10; // มัด100=100ใบ, หลอด20=10ใบ
+
+          if (exPos === 'pos2') {
+            // POS2 แลก Tidel (POS2 -> POS1 -> Tidel -> POS1 -> POS2)
+            if (pos2[exPayDenom] < payQ) return alert('เงินในลิ้นชัก POS 2 ไม่พอจ่าย!');
+            
+            // 1. POS2 หักแบงก์จ่าย
+            setPos2(p => ({ ...p, [exPayDenom]: p[exPayDenom] - payQ }));
+            // 2. POS1 รับแบงก์เก็บไว้ในลิ้นชัก
+            setPos1(p => ({ ...p, [exPayDenom]: p[exPayDenom] + payQ }));
+            // 3. หักหลอดออกจาก Tidel (ถ้ามีการจด Tidel)
+            setTidel(p => ({ ...p, [exGetDenom]: Math.max(0, p[exGetDenom] - getQ) }));
+            // 4. POS2 ได้แบงก์ย่อยเข้าลิ้นชักโดยตรง (ฉีกหลอดเข้าลิ้นชัก)
+            setPos2(p => ({ ...p, [exGetDenom]: p[exGetDenom] + (billsInTube * getQ) }));
+            
+            addLog(`🔄 POS2 แลกไทเดน (ผ่าน POS1): POS2 จ่ายแบงก์ ${exPayDenom}(${payQ}ใบ) -> POS1 | ดึงหลอด ${exGetDenom}(${getQ}หลอด) -> ใส่ POS2`);
+          
+          } else {
+            // POS1 แลก Tidel โดยตรง
+            if (pos1[exPayDenom] < payQ) return alert('เงินในลิ้นชัก POS 1 ไม่พอจ่าย!');
+            
+            setPos1(p => ({ ...p, [exPayDenom]: p[exPayDenom] - payQ }));
+            setTidel(p => ({ ...p, [exGetDenom]: Math.max(0, p[exGetDenom] - getQ) }));
+            setPos1(p => ({ ...p, [exGetDenom]: p[exGetDenom] + (billsInTube * getQ) }));
+            
+            addLog(`🔄 POS1 แลกไทเดน: จ่ายแบงก์ ${exPayDenom}(${payQ}ใบ) | ฉีกหลอด ${exGetDenom}(${getQ}หลอด) ใส่ลิ้นชัก`);
+          }
+        } 
+        else if (exType === 'internal_under') {
+          // แลกเงินใต้เครื่อง
+          const drawerSetter = exPos === 'pos1' ? setPos1 : setPos2;
+          const drawerState = exPos === 'pos1' ? pos1 : pos2;
+
+          if (drawerState[exPayDenom] < payQ) return alert(`เงินในลิ้นชัก ${exPos.toUpperCase()} ไม่พอจ่าย!`);
+          
+          drawerSetter(p => ({ ...p, [exPayDenom]: p[exPayDenom] - payQ, [exGetDenom]: p[exGetDenom] + getQ }));
+          
+          // นำแบงก์ใหญ่เก็บใต้เครื่อง และหักเงินย่อยออกจากใต้เครื่อง
+          setUnderMachine(p => parseFloat(p||0) + payValue - getValue);
+
+          addLog(`📥 ${exPos.toUpperCase()} แลกใต้เครื่อง: จ่ายแบงก์ ${exPayDenom} นำไปเก็บ | หยิบ ${exGetDenom}(${getQ}ใบ) มาทอน`);
+        }
+        else if (exType === 'draft_tidel') {
+          // ดราฟลง Tidel (นำเงินเข้าตู้เซฟ)
+          const drawerSetter = exPos === 'pos1' ? setPos1 : setPos2;
+          const drawerState = exPos === 'pos1' ? pos1 : pos2;
+
+          if (drawerState[exPayDenom] < payQ) return alert(`เงินในลิ้นชัก ${exPos.toUpperCase()} ไม่พอ!`);
+          
+          drawerSetter(p => ({ ...p, [exPayDenom]: p[exPayDenom] - payQ }));
+          // Note: เราไม่ได้นับเงินสดดราฟใน state tidel เพราะตู้เซฟเก็บแล้วเก็บเลย จะนับแค่หลอดที่เหลือ
+          addLog(`🔽 ดราฟเงินลง Tidel: จาก ${exPos.toUpperCase()} แบงก์ ${exPayDenom} จำนวน ${payQ} ใบ`);
+        }
+
+        setExPayQty(''); setExGetQty('');
+        alert('ทำรายการโอน/แลกเงินเรียบร้อย!');
+        setActiveTab('count'); // ย้ายไปหน้าตรวจนับเพื่อให้เห็นผลลัพธ์
       };
 
       return (
-        <div className="min-h-screen p-2 sm:p-4 font-sans text-gray-800 pb-24">
+        <div className="flex flex-col h-screen w-full max-w-lg mx-auto bg-white shadow-xl overflow-hidden relative">
           
-          {/* Header */}
-          <div className="max-w-7xl mx-auto mb-4 flex flex-col sm:flex-row justify-between items-center bg-white p-4 rounded-lg shadow border border-gray-200">
+          {/* Top Header */}
+          <div className="bg-slate-800 text-white p-3 flex justify-between items-center z-10">
             <div>
-              <h1 className="text-2xl font-bold text-blue-800">🧾 ระบบสรุปยอดสิ้นกะ (Shift Survey)</h1>
-              <p className="text-sm text-gray-500 mt-1">พร้อมระบบสะสมยอดและบันทึก Log ธุรกรรม</p>
+              <h1 className="font-bold text-lg">💰 POS Manager</h1>
+              <p className="text-[10px] text-slate-300">ตัวช่วยจำเงินสด POS1 / POS2</p>
             </div>
-            <div className="mt-4 sm:mt-0 flex flex-wrap gap-2 w-full sm:w-auto justify-end">
-              <button onClick={() => setShowHistory(true)} className="flex-1 sm:flex-none bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-4 py-2 rounded-lg font-bold border border-indigo-300 transition-colors">
-                🕒 ดูประวัติ
-              </button>
-              
-              {/* ปุ่มเปิดหน้าสะสมยอด (แสดงเฉพาะตอนเปิดกะแล้ว) */}
-              {shiftActive && (
-                <button onClick={() => setShowAccumulator(true)} className="flex-1 sm:flex-none bg-yellow-400 hover:bg-yellow-500 text-yellow-900 px-4 py-2 rounded-lg font-bold shadow transition-colors flex items-center justify-center gap-1 border border-yellow-500">
-                  <span>📝</span> สะสมยอดระหว่างวัน
-                </button>
-              )}
-
-              <button onClick={handleSaveToLocal} className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold shadow transition-colors">
-                💾 บันทึกประวัติ
-              </button>
-              {shiftActive && (
-                <button onClick={() => {
-                  if(window.confirm('ต้องการยกเลิกกะที่กำลังทำงานอยู่ใช่หรือไม่? ข้อมูลที่บันทึกจะหายไป')) {
-                    setShiftActive(false); setStartingCashAmount(0); localStorage.removeItem('posCurrentShift'); 
-                    resetInputs(); setDailyLogs([]); localStorage.removeItem('posDailyLogs');
-                  }
-                }} className="flex-1 sm:flex-none bg-red-100 hover:bg-red-200 text-red-700 px-4 py-2 rounded-lg font-bold border border-red-300 transition-colors">
-                  ยกเลิกกะ
-                </button>
-              )}
+            <div className="text-right">
+              <div className="text-xs text-slate-400">รวมทั้งร้าน (ระบบจำลอง)</div>
+              <div className="font-bold text-xl text-emerald-400">฿{formatCurr(grandTotal)}</div>
             </div>
           </div>
 
-          {/* Modal: หน้าสะสมยอดระหว่างวัน (Accumulator) */}
-          {showAccumulator && (
-            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-2 sm:p-4">
-              <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
-                <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-yellow-50 rounded-t-xl">
+          {/* Main Content */}
+          <div className="flex-1 overflow-y-auto pb-20">
+            
+            {/* ---------------- TAB 1: หน้าขาย (Action) ---------------- */}
+            {activeTab === 'action' && (
+              <div className="p-3 flex flex-col h-full bg-slate-50">
+                
+                {/* POS Selector */}
+                <div className="flex bg-white rounded-lg p-1 shadow-sm border border-slate-200 mb-3">
+                  <button onClick={() => { setActivePos('pos1'); clearTransaction(); }} className={`flex-1 py-2 font-bold rounded-md text-sm ${activePos === 'pos1' ? 'bg-blue-600 text-white shadow' : 'text-slate-500'}`}>💻 เครื่อง POS 1</button>
+                  <button onClick={() => { setActivePos('pos2'); clearTransaction(); }} className={`flex-1 py-2 font-bold rounded-md text-sm ${activePos === 'pos2' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500'}`}>💻 เครื่อง POS 2</button>
+                </div>
+
+                <div className="flex justify-between items-end mb-3">
+                  <div className="text-sm font-bold text-slate-600">
+                    ลิ้นชัก {activePos.toUpperCase()}: <span className="text-blue-600 text-lg">฿{formatCurr(activePos === 'pos1' ? pos1Total : pos2Total)}</span>
+                  </div>
+                </div>
+
+                {/* Mode Selector */}
+                <div className="flex gap-2 mb-4">
+                  <button onClick={() => setActionMode('receive')} className={`flex-1 py-3 rounded-xl font-bold text-lg transition-all ${actionMode === 'receive' ? 'bg-emerald-500 text-white shadow-lg ring-2 ring-emerald-300' : 'bg-white text-slate-500 border border-slate-200'}`}>
+                    📥 รับเงินลูกค้า
+                  </button>
+                  <button onClick={() => setActionMode('change')} className={`flex-1 py-3 rounded-xl font-bold text-lg transition-all ${actionMode === 'change' ? 'bg-red-500 text-white shadow-lg ring-2 ring-red-300' : 'bg-white text-slate-500 border border-slate-200'}`}>
+                    📤 หยิบทอน
+                  </button>
+                </div>
+
+                {/* Live Monitor */}
+                <div className="bg-slate-800 rounded-xl shadow-md p-3 mb-4 flex justify-between items-center text-white">
                   <div>
-                    <h2 className="text-xl font-bold text-yellow-800">📝 จดสะสมยอดระหว่างกะ</h2>
-                    <p className="text-xs text-yellow-700 mt-1">คีย์บิลที่นี่ ยอดจะถูกบวกเข้าหน้าสรุปอัตโนมัติ</p>
+                    <div className="text-xs text-emerald-400 font-bold">รับ: ฿{currentTx.receive}</div>
+                    <div className="text-xs text-red-400 font-bold">ทอน: ฿{currentTx.change}</div>
+                    <div className="text-sm font-bold mt-1">ยอดบิลสุทธิ: ฿{currentTx.receive - currentTx.change}</div>
                   </div>
-                  <button onClick={() => setShowAccumulator(false)} className="text-gray-500 hover:text-red-500 font-bold text-2xl px-2">&times;</button>
+                  <button onClick={clearTransaction} className="bg-white text-slate-800 px-4 py-2 rounded-lg font-bold text-sm shadow hover:bg-slate-100 active:scale-95">
+                    จบลูกค้า (ล้าง)
+                  </button>
                 </div>
+
+                {/* Denom Keyboard */}
+                <div className="grid grid-cols-3 gap-3 flex-1 content-start">
+                  {denoms.map(d => {
+                    const drawerData = activePos === 'pos1' ? pos1 : pos2;
+                    return (
+                      <button 
+                        key={d} 
+                        onClick={() => handleActionClick(d)}
+                        className={`btn-press rounded-xl h-20 flex flex-col justify-center items-center shadow-md transition-all ${getDenomColor(d)}`}
+                      >
+                        <span className="font-bold text-2xl">{d >= 1 ? d : `${d * 100} สต.`}</span>
+                        <span className="text-[10px] opacity-90 font-medium">มีในเก๊ะ: {drawerData[d]} ใบ</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ---------------- TAB 2: ตรวจนับ (Count) ---------------- */}
+            {activeTab === 'count' && (
+              <div className="p-3 space-y-4">
                 
-                <div className="p-4 overflow-y-auto flex-1 space-y-6 bg-gray-50">
-                  
-                  {/* กรอกสะสมยอด */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    
-                    {/* หมวด: จ่ายโดย */}
-                    <div className="bg-white p-4 rounded-lg shadow-sm border border-purple-200">
-                      <h3 className="font-bold text-purple-800 mb-3 border-b pb-2">💳 หมวด: จ่ายโดย... (Payments)</h3>
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-600 mb-1">ประเภทการจ่าย</label>
-                          <select className="w-full p-2 border border-gray-300 rounded focus:ring-purple-500 focus:border-purple-500 bg-white" value={accPayType} onChange={e => setAccPayType(e.target.value)}>
-                            <option value="epayment_truewallet">TrueWallet</option>
-                            <option value="epayment_alipay">Alipay</option>
-                            <option value="epayment_alipayPlus">Alipay+</option>
-                            <option value="epayment_wechat">WeChat Pay</option>
-                            <option value="epayment_creditCard">บัตรเครดิต</option>
-                            <option value="system_cashSales">ยอดขายเงินสด (หากต้องการสะสมมือ)</option>
-                          </select>
-                        </div>
-                        <div className="flex gap-2">
-                          <div className="flex-1">
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">จำนวนเงิน</label>
-                            <input type="number" placeholder="0.00" className="w-full p-2 border border-gray-300 rounded text-right font-bold focus:ring-2 focus:ring-purple-500 outline-none" value={accPayAmount} onChange={e => setAccPayAmount(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addAccumulatorLog(accPayType, accPayAmount, setAccPayAmount)} />
-                          </div>
-                          <div className="flex items-end">
-                            <button onClick={() => addAccumulatorLog(accPayType, accPayAmount, setAccPayAmount)} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded shadow">บวกเพิ่ม</button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* หมวด: ฝาก/บริการ */}
-                    <div className="bg-white p-4 rounded-lg shadow-sm border border-pink-200">
-                      <h3 className="font-bold text-pink-800 mb-3 border-b pb-2">🏧 หมวด: ฝากและบริการ (Services)</h3>
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-600 mb-1">ประเภทบริการ</label>
-                          <select className="w-full p-2 border border-gray-300 rounded focus:ring-pink-500 focus:border-pink-500 bg-white" value={accSrvType} onChange={e => setAccSrvType(e.target.value)}>
-                            <option value="other_bankDeposit">ฝากเงินธนาคาร</option>
-                            <option value="other_topupTrueWallet">เติมเงิน TrueWallet</option>
-                            <option value="other_billPayment">จ่ายบิลต่างๆ</option>
-                            <option value="system_depositServices">บริการฝากเงิน (เข้ายอดระบบ)</option>
-                            <option value="other_other">บริการอื่นๆ</option>
-                          </select>
-                        </div>
-                        <div className="flex gap-2">
-                          <div className="flex-1">
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">จำนวนเงิน</label>
-                            <input type="number" placeholder="0.00" className="w-full p-2 border border-gray-300 rounded text-right font-bold focus:ring-2 focus:ring-pink-500 outline-none" value={accSrvAmount} onChange={e => setAccSrvAmount(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addAccumulatorLog(accSrvType, accSrvAmount, setAccSrvAmount)} />
-                          </div>
-                          <div className="flex items-end">
-                            <button onClick={() => addAccumulatorLog(accSrvType, accSrvAmount, setAccSrvAmount)} className="bg-pink-600 hover:bg-pink-700 text-white font-bold py-2 px-4 rounded shadow">บวกเพิ่ม</button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                  </div>
-
-                  {/* ประวัติการจดสะสมล่าสุด */}
-                  <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-                    <div className="bg-gray-100 px-4 py-2 font-bold text-gray-700 border-b flex justify-between">
-                      <span>ประวัติการบวกยอดรอบนี้</span>
-                      <span className="text-blue-600">รวม {dailyLogs.length} รายการ</span>
-                    </div>
-                    <div className="max-h-48 overflow-y-auto p-2">
-                      {dailyLogs.length === 0 ? (
-                        <div className="text-center text-gray-400 py-4 text-sm">ยังไม่มีการสะสมยอด</div>
-                      ) : (
-                        <ul className="divide-y divide-gray-100">
-                          {dailyLogs.map((log) => (
-                            <li key={log.id} className="flex justify-between items-center py-2 px-2 hover:bg-gray-50">
-                              <div>
-                                <span className="text-xs text-gray-400 w-16 inline-block">{log.timestamp}</span>
-                                <span className="font-semibold text-gray-700 ml-2">{log.label}</span>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                <span className="font-bold text-blue-600">฿{formatCurrency(log.amount)}</span>
-                                <button onClick={() => removeAccumulatorLog(log.id)} className="text-red-500 hover:bg-red-50 px-2 py-1 rounded text-xs border border-red-200">ลบ/คืนค่า</button>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  </div>
-
-                </div>
-                
-                <div className="p-4 border-t bg-white rounded-b-xl flex justify-end">
-                  <button onClick={() => setShowAccumulator(false)} className="bg-gray-800 hover:bg-gray-700 text-white px-6 py-2 rounded-lg font-bold">ปิดหน้าต่างนี้ (ยอดบันทึกไปแล้ว)</button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Modal: History */}
-          {showHistory && (
-            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col">
-                <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
-                  <h2 className="text-xl font-bold text-gray-800">🕒 ประวัติการบันทึกปิดกะ (Shift History)</h2>
-                  <button onClick={() => setShowHistory(false)} className="text-gray-500 hover:text-red-500 font-bold text-xl px-2">&times;</button>
-                </div>
-                <div className="p-4 overflow-y-auto flex-1">
-                  {savedLogs.length === 0 ? (
-                    <p className="text-center text-gray-500 py-8">ยังไม่มีประวัติการบันทึก</p>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm text-left whitespace-nowrap">
-                        <thead className="bg-gray-100 text-gray-600 font-bold">
-                          <tr>
-                            <th className="p-3 rounded-tl-lg">วันเวลาที่บันทึก</th>
-                            <th className="p-3 text-right">ยอดระบบ</th>
-                            <th className="p-3 text-right">นับได้จริง</th>
-                            <th className="p-3 text-right">ผลต่าง</th>
-                            <th className="p-3 text-right">Log บริการ/E-Pay</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200">
-                          {savedLogs.map(log => (
-                            <tr key={log.id} className="hover:bg-blue-50 transition-colors">
-                              <td className="p-3 text-gray-800 font-medium">{log.date}</td>
-                              <td className="p-3 text-right text-gray-600">฿{formatCurrency(log.systemExpected)}</td>
-                              <td className="p-3 text-right font-bold text-blue-600">฿{formatCurrency(log.actualTotal)}</td>
-                              <td className={`p-3 text-right font-bold ${log.variance === 0 ? 'text-green-500' : log.variance > 0 ? 'text-blue-500' : 'text-red-500'}`}>
-                                {log.variance > 0 ? '+' : ''}{formatCurrency(log.variance)}
-                              </td>
-                              <td className="p-3 text-right text-purple-600 text-xs">฿{formatCurrency(log.ePaymentTotal + log.otherServicesTotal)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Main Content Area */}
-          <div ref={surveyRef} className="pb-4 bg-gray-100">
-            <div className="max-w-7xl mx-auto grid grid-cols-1 xl:grid-cols-4 gap-4">
-              
-              <div className="xl:col-span-1 space-y-4">
-                {!shiftActive ? (
-                  <div className="bg-blue-50 rounded-lg shadow border border-blue-200 p-6 text-center space-y-4 sticky top-4">
-                    <div className="text-4xl">👋</div>
-                    <h2 className="text-xl font-bold text-blue-800">กำลังเตรียมเริ่มกะ</h2>
-                    <p className="text-gray-600 text-sm">
-                      กรุณานับเงินในลิ้นชัก ตู้ Tidel และเงินนอกเครื่องที่ท่านได้รับมา แล้วกดปุ่ม <strong>"ยืนยันการเริ่มกะ"</strong> เพื่อตั้งเป็นเงินทอนเริ่มต้น
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
-                      <div className="bg-indigo-600 px-4 py-3 text-white">
-                        <h2 className="font-bold">💻 ยอดเงินสดตามระบบ</h2>
-                      </div>
-                      <div className="p-4 space-y-3 bg-indigo-50/30">
-                        <div>
-                          <label className="block text-sm font-bold text-gray-700 mb-1">เงินทอนเริ่มต้น (ล็อกไว้)</label>
-                          <div className="w-full p-2 border border-indigo-200 rounded bg-indigo-100 text-right font-bold text-indigo-900 cursor-not-allowed">
-                            ฿{formatCurrency(startingCashAmount)}
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-bold text-gray-700 mb-1">ยอดขายเงินสด</label>
-                          <input type="number" className="w-full p-2 border border-indigo-200 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-right font-bold text-indigo-900" placeholder="0.00" value={systemData.cashSales} onChange={(e) => handleInputChange(setSystemData)('cashSales', e.target.value)} />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-bold text-gray-700 mb-1">บริการฝากเงิน</label>
-                          <input type="number" className="w-full p-2 border border-indigo-200 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-right font-bold text-indigo-900" placeholder="0.00" value={systemData.depositServices} onChange={(e) => handleInputChange(setSystemData)('depositServices', e.target.value)} />
-                        </div>
-                        <div className="border-t border-indigo-200 pt-2 mt-2">
-                          <div className="flex justify-between font-bold text-indigo-800">
-                            <span>รวมเป้าหมายระบบ:</span><span>฿{formatCurrency(systemExpected)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-white rounded-lg shadow border border-purple-200 overflow-hidden">
-                      <div className="bg-purple-600 px-4 py-3 text-white"><h2 className="font-bold">📱 Log ยอด E-Payment</h2></div>
-                      <div className="p-4 space-y-2 bg-purple-50/30">
-                        {[{ id: 'truewallet', label: 'TrueWallet' }, { id: 'wechat', label: 'WeChat Pay' }, { id: 'alipay', label: 'Alipay' }, { id: 'alipayPlus', label: 'Alipay+' }, { id: 'creditCard', label: 'บัตรเครดิต' }].map(item => (
-                          <div key={item.id} className="flex items-center justify-between">
-                            <label className="text-sm font-semibold text-gray-600">{item.label}</label>
-                            <input type="number" className="w-28 p-1.5 border border-purple-200 rounded focus:ring-2 focus:ring-purple-500 outline-none text-right text-sm font-medium" placeholder="0" value={ePayments[item.id]} onChange={(e) => handleInputChange(setEPayments)(item.id, e.target.value)} />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="bg-white rounded-lg shadow border border-pink-200 overflow-hidden">
-                      <div className="bg-pink-600 px-4 py-3 text-white"><h2 className="font-bold">🏧 Log บริการ (นอกเครื่อง)</h2></div>
-                      <div className="p-4 space-y-2 bg-pink-50/30">
-                        {[{ id: 'topupTrueWallet', label: 'เติมเงิน TrueWallet' }, { id: 'bankDeposit', label: 'ฝากเงินธนาคาร' }, { id: 'billPayment', label: 'จ่ายบิล' }, { id: 'other', label: 'อื่นๆ' }].map(item => (
-                          <div key={item.id} className="flex items-center justify-between">
-                            <label className="text-sm font-semibold text-gray-600">{item.label}</label>
-                            <input type="number" className="w-28 p-1.5 border border-pink-200 rounded focus:ring-2 focus:ring-pink-500 outline-none text-right text-sm font-medium" placeholder="0" value={otherServices[item.id]} onChange={(e) => handleInputChange(setOtherServices)(item.id, e.target.value)} />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              <div className="xl:col-span-2 space-y-4">
-                <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
-                  <div className="bg-blue-600 px-4 py-3 flex justify-between items-center text-white">
-                    <h2 className="font-bold text-lg">1. เงินในลิ้นชัก (Cash Drawer)</h2>
-                    <span className="font-bold text-xl">฿{formatCurrency(drawerTotal)}</span>
-                  </div>
-                  <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <h3 className="font-semibold text-gray-600 border-b pb-1 mb-2">💵 ธนบัตร (จำนวนใบ)</h3>
-                      {[500, 100, 50, 20].map(denom => (
-                        <div key={denom} className="flex items-center justify-between bg-gray-50 p-2 rounded">
-                          <label className="w-12 font-bold text-gray-700">{denom}</label>
-                          <span className="text-gray-400 text-xs">x</span>
-                          <input type="number" className="w-20 p-1.5 border border-gray-300 rounded text-center focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0" value={drawer[denom]} onChange={(e) => handleInputChange(setDrawer)(denom, e.target.value)} />
-                          <span className="w-20 text-right text-gray-600 font-medium text-sm">{formatCurrency(denom * (parseInt(drawer[denom]) || 0))}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="space-y-2">
-                      <h3 className="font-semibold text-gray-600 border-b pb-1 mb-2">🪙 เหรียญ (จำนวนเหรียญ)</h3>
-                      {[10, 5, 2, 1, 0.5, 0.25].map(denom => (
-                        <div key={denom} className="flex items-center justify-between bg-gray-50 p-2 rounded">
-                          <label className="w-12 font-bold text-gray-700">{denom}</label>
-                          <span className="text-gray-400 text-xs">x</span>
-                          <input type="number" className="w-20 p-1.5 border border-gray-300 rounded text-center focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0" value={drawer[denom]} onChange={(e) => handleInputChange(setDrawer)(denom, e.target.value)} />
-                          <span className="w-20 text-right text-gray-600 font-medium text-sm">{formatCurrency(denom * (parseInt(drawer[denom]) || 0))}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                <div className="bg-blue-50 p-2 rounded-lg text-xs text-blue-800 font-semibold border border-blue-200 flex items-center gap-2">
+                  <span>💡</span> เพิ่ม/ลด จำนวนใบได้ตลอดเวลา (กด + / - หรือคลิกที่ตัวเลขเพื่อพิมพ์)
                 </div>
 
-                <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
-                   <div className="bg-orange-500 px-4 py-3 flex justify-between items-center text-white">
-                      <h2 className="font-bold text-lg">2. เงินนอกเครื่อง (Outside Cash)</h2>
-                      <span className="font-bold text-xl">฿{formatCurrency(outsideTotal)}</span>
+                {/* Drawer POS 1 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                  <div className="bg-blue-600 text-white p-2 font-bold flex justify-between">
+                    <span>1. ลิ้นชัก POS 1</span>
+                    <span>฿{formatCurr(pos1Total)}</span>
                   </div>
-                  <div className="p-4 flex flex-col sm:flex-row gap-4">
-                    <div className="flex-[1]">
-                      <label className="block text-xs font-bold text-gray-700 mb-1">ยอดเงินรวม (บาท)</label>
-                      <input type="number" className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 outline-none text-right font-bold" placeholder="0.00" value={outsideCash.amount} onChange={(e) => handleInputChange(setOutsideCash)('amount', e.target.value)} />
-                    </div>
-                    <div className="flex-[2]">
-                      <label className="block text-xs font-bold text-gray-700 mb-1">หมายเหตุ</label>
-                      <input type="text" className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 outline-none bg-gray-50" placeholder="เช่น เงินทอนสำรอง..." value={outsideCash.note} onChange={(e) => handleTextChange(setOutsideCash)('note', e.target.value)} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="xl:col-span-1 space-y-4">
-                <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
-                   <div className="bg-emerald-600 px-4 py-3 flex justify-between items-center text-white">
-                      <h2 className="font-bold text-lg">3. ตู้ Tidel</h2>
-                      <span className="font-bold text-xl">฿{formatCurrency(tidelTotal)}</span>
-                  </div>
-                  <div className="p-3 space-y-1 bg-gray-50">
-                    <div className="grid grid-cols-3 text-xs font-bold text-gray-500 mb-1 px-1"><div>ช่อง</div><div className="text-center">ใบ/มัด</div><div className="text-right">รวม</div></div>
-                    {tidelTubesConfig.map((tube, index) => (
-                      <div key={tube.id} className="grid grid-cols-3 items-center gap-2">
-                        <div className="font-bold text-emerald-700 text-sm"><span className="text-[10px] text-gray-400 block -mb-1">#{index + 1}</span>{tube.label} <span className="text-[10px]">(x{tube.multiplier})</span></div>
-                        <input type="number" className="w-full p-1 border border-gray-300 rounded text-center focus:ring-2 focus:ring-emerald-500 outline-none text-sm" placeholder="0" value={tidel[tube.id]} onChange={(e) => handleInputChange(setTidel)(tube.id, e.target.value)} />
-                        <div className="text-right font-medium text-gray-700 text-sm">{formatCurrency(tube.multiplier * (parseInt(tidel[tube.id]) || 0))}</div>
+                  <div className="p-2 grid grid-cols-2 gap-2">
+                    {denoms.map(d => (
+                      <div key={`p1-${d}`} className="flex justify-between items-center bg-slate-50 p-1 rounded border border-slate-200">
+                        <div className={`w-8 text-center text-xs font-bold rounded ${getDenomColor(d)}`}>{d}</div>
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => setPos1(p => ({...p, [d]: Math.max(0, p[d]-1)}))} className="w-6 h-6 bg-slate-200 rounded text-red-600 font-bold">-</button>
+                          <input type="number" value={pos1[d] === 0 ? '' : pos1[d]} onChange={(e) => setPos1(p => ({...p, [d]: e.target.value === '' ? 0 : parseInt(e.target.value)}))} className="w-10 text-center font-bold outline-none bg-transparent" placeholder="0" />
+                          <button onClick={() => setPos1(p => ({...p, [d]: p[d]+1}))} className="w-6 h-6 bg-slate-200 rounded text-emerald-600 font-bold">+</button>
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                <div className="bg-gray-800 text-white rounded-lg shadow overflow-hidden sticky top-4">
-                  <div className="px-4 py-3 border-b border-gray-700"><h2 className="text-lg font-bold">{shiftActive ? '📊 สรุปผลเงินสด (Cash Summary)' : '📊 ยอดเงินทอนเปิดกะ'}</h2></div>
-                  <div className="p-4 space-y-2 text-sm">
-                    <div className="flex justify-between text-gray-300"><span>1. ลิ้นชัก</span><span>{formatCurrency(drawerTotal)}</span></div>
-                    <div className="flex justify-between text-gray-300"><span>2. ตู้ Tidel</span><span>{formatCurrency(tidelTotal)}</span></div>
-                    <div className="flex justify-between text-gray-300"><span>3. นอกเครื่อง</span><span>{formatCurrency(outsideTotal)}</span></div>
-                    
-                    <div className="border-t border-gray-600 pt-2 mt-2">
-                      <div className="text-gray-400 text-xs">{shiftActive ? 'ยอดเงินสดที่นับได้จริง' : 'รวมเงินทอนเริ่มต้น'}</div>
-                      <div className="text-2xl font-bold text-right text-blue-400">฿{formatCurrency(actualTotal)}</div>
-                    </div>
-
-                    {shiftActive && (
-                      <>
-                        <div className="bg-gray-900 rounded p-3 mt-3 border border-gray-700">
-                          <div className="text-gray-400 text-xs mb-1 flex justify-between"><span>ผลต่าง (Variance)</span><span>เป้า: ฿{formatCurrency(systemExpected)}</span></div>
-                          <div className={`text-xl font-bold text-right ${variance === 0 ? 'text-green-400' : variance > 0 ? 'text-blue-400' : 'text-red-400'}`}>
-                            {variance > 0 ? '+' : ''}{formatCurrency(variance)}
-                            <span className="text-xs font-normal ml-1">{variance === 0 ? '(พอดี)' : variance > 0 ? '(เกิน)' : '(ขาด)'}</span>
-                          </div>
+                {/* Drawer POS 2 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                  <div className="bg-indigo-600 text-white p-2 font-bold flex justify-between">
+                    <span>2. ลิ้นชัก POS 2</span>
+                    <span>฿{formatCurr(pos2Total)}</span>
+                  </div>
+                  <div className="p-2 grid grid-cols-2 gap-2">
+                    {denoms.map(d => (
+                      <div key={`p2-${d}`} className="flex justify-between items-center bg-slate-50 p-1 rounded border border-slate-200">
+                        <div className={`w-8 text-center text-xs font-bold rounded ${getDenomColor(d)}`}>{d}</div>
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => setPos2(p => ({...p, [d]: Math.max(0, p[d]-1)}))} className="w-6 h-6 bg-slate-200 rounded text-red-600 font-bold">-</button>
+                          <input type="number" value={pos2[d] === 0 ? '' : pos2[d]} onChange={(e) => setPos2(p => ({...p, [d]: e.target.value === '' ? 0 : parseInt(e.target.value)}))} className="w-10 text-center font-bold outline-none bg-transparent" placeholder="0" />
+                          <button onClick={() => setPos2(p => ({...p, [d]: p[d]+1}))} className="w-6 h-6 bg-slate-200 rounded text-emerald-600 font-bold">+</button>
                         </div>
-
-                        <div className="border-t border-gray-600 pt-2 mt-3 space-y-1">
-                           <div className="text-gray-400 text-[10px] uppercase tracking-wider text-center mb-2">--- ยอดจดบันทึกเพิ่มเติม ---</div>
-                           <div className="flex justify-between text-purple-300 text-xs"><span>รวม E-Payment</span><span>฿{formatCurrency(ePaymentTotal)}</span></div>
-                           <div className="flex justify-between text-pink-300 text-xs"><span>รวมบริการนอกเครื่อง</span><span>฿{formatCurrency(otherServicesTotal)}</span></div>
-                        </div>
-                      </>
-                    )}
+                      </div>
+                    ))}
                   </div>
                 </div>
+
+                {/* Tidel & Under */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div className="bg-emerald-600 text-white p-2 font-bold text-sm">3. หลอด Tidel</div>
+                    <div className="p-2 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-slate-600">มัด 100</span>
+                        <input type="number" value={tidel[100] || ''} onChange={e => setTidel(p => ({...p, 100: parseInt(e.target.value)||0}))} className="w-12 text-center border rounded" placeholder="0" />
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-slate-600">หลอด 20</span>
+                        <input type="number" value={tidel[20] || ''} onChange={e => setTidel(p => ({...p, 20: parseInt(e.target.value)||0}))} className="w-12 text-center border rounded" placeholder="0" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div className="bg-amber-600 text-white p-2 font-bold text-sm">4. ใต้ลิ้นชัก</div>
+                    <div className="p-2">
+                      <label className="text-[10px] text-slate-500 block mb-1">ยอดรวมเงินทอนสำรอง (บาท)</label>
+                      <input type="number" value={underMachine} onChange={e => setUnderMachine(e.target.value)} className="w-full text-right font-bold text-lg border-b-2 focus:border-amber-500 outline-none p-1" placeholder="0.00" />
+                    </div>
+                  </div>
+                </div>
+
               </div>
-            </div>
+            )}
+
+            {/* ---------------- TAB 3: โอนย้าย (Exchange) ---------------- */}
+            {activeTab === 'exchange' && (
+              <div className="p-4 space-y-4">
+                
+                <div className="bg-white rounded-xl shadow-md p-4 border border-slate-200">
+                  <h2 className="font-bold text-lg text-slate-800 mb-4 flex items-center gap-2"><span>🔄</span> เครื่องมือแลกเงิน</h2>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 mb-1">1. ต้องการทำอะไร?</label>
+                      <select value={exType} onChange={e => setExType(e.target.value)} className="w-full p-2 border border-slate-300 rounded-lg font-bold text-blue-800 bg-blue-50">
+                        <option value="tidel_tube">ดึงหลอด/มัด จากตู้ Tidel (ซื้อหลอด)</option>
+                        <option value="internal_under">แลกเงินย่อยกับใต้เครื่อง (เหรียญ/แบงก์)</option>
+                        <option value="draft_tidel">ดราฟเงิน (ฝากเงินเข้าตู้ Tidel)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 mb-1">2. เครื่องไหนเป็นคนทำรายการ?</label>
+                      <select value={exPos} onChange={e => setExPos(e.target.value)} className="w-full p-2 border border-slate-300 rounded-lg">
+                        <option value="pos1">POS 1 (ทำรายการได้โดยตรง)</option>
+                        {exType !== 'draft_tidel' && <option value="pos2">POS 2 (ระบบจะส่งต่อผ่าน POS 1 ให้อัตโนมัติ)</option>}
+                      </select>
+                    </div>
+
+                    {exType === 'tidel_tube' && (
+                      <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
+                        <div className="text-xs font-bold text-emerald-600 mb-2">
+                          {exPos === 'pos2' ? 'แผนผัง: ลิ้นชัก POS2 -> ลิ้นชัก POS1 -> ดึงหลอด Tidel -> ฉีกใส่ลิ้นชัก POS2' : 'แผนผัง: ลิ้นชัก POS1 -> ดึงหลอด Tidel -> ฉีกใส่ลิ้นชัก POS1'}
+                        </div>
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="block text-[10px] font-bold text-slate-500">จ่ายด้วยแบงก์</label>
+                            <select value={exPayDenom} onChange={e => setExPayDenom(e.target.value)} className="w-full p-2 border rounded">
+                              <option value="1000">1000 บาท</option><option value="500">500 บาท</option><option value="100">100 บาท</option>
+                            </select>
+                          </div>
+                          <div className="w-24">
+                            <label className="block text-[10px] font-bold text-slate-500">จำนวน (ใบ)</label>
+                            <input type="number" value={exPayQty} onChange={e => setExPayQty(e.target.value)} className="w-full p-2 border rounded text-center" placeholder="0" />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="block text-[10px] font-bold text-slate-500">แลกเป็นหลอด</label>
+                            <select value={exGetDenom} onChange={e => setExGetDenom(e.target.value)} className="w-full p-2 border rounded">
+                              <option value="100">มัด 100 (10,000฿)</option><option value="20">หลอด 20 (200฿)</option>
+                            </select>
+                          </div>
+                          <div className="w-24">
+                            <label className="block text-[10px] font-bold text-slate-500">จำนวน (ชุด)</label>
+                            <input type="number" value={exGetQty} onChange={e => setExGetQty(e.target.value)} className="w-full p-2 border rounded text-center" placeholder="0" />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {exType === 'internal_under' && (
+                      <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
+                        <div className="text-xs font-bold text-amber-600 mb-2">
+                          แผนผัง: นำแบงก์ใหญ่จาก {exPos.toUpperCase()} ไปเก็บใต้เครื่อง -> นำแบงก์ย่อยใต้เครื่องใส่ลิ้นชัก
+                        </div>
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="block text-[10px] font-bold text-slate-500">นำไปเก็บ (แบงก์ใหญ่)</label>
+                            <select value={exPayDenom} onChange={e => setExPayDenom(e.target.value)} className="w-full p-2 border rounded">
+                              <option value="1000">1000 บาท</option><option value="500">500 บาท</option><option value="100">100 บาท</option>
+                            </select>
+                          </div>
+                          <div className="w-20"><input type="number" value={exPayQty} onChange={e => setExPayQty(e.target.value)} className="w-full p-2 border rounded mt-4 text-center" placeholder="ใบ" /></div>
+                        </div>
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="block text-[10px] font-bold text-slate-500">สิ่งที่นำมาทอน</label>
+                            <select value={exGetDenom} onChange={e => setExGetDenom(e.target.value)} className="w-full p-2 border rounded">
+                              {denoms.filter(d=>d<=100).map(d => <option key={d} value={d}>{d >= 1 ? `แบงก์/เหรียญ ${d}` : `${d*100} สต.`}</option>)}
+                            </select>
+                          </div>
+                          <div className="w-20"><input type="number" value={exGetQty} onChange={e => setExGetQty(e.target.value)} className="w-full p-2 border rounded mt-4 text-center" placeholder="ใบ/ชิ้น" /></div>
+                        </div>
+                      </div>
+                    )}
+
+                    {exType === 'draft_tidel' && (
+                      <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
+                         <div className="text-xs font-bold text-red-600 mb-2">แผนผัง: นำเงินจากลิ้นชัก {exPos.toUpperCase()} หยอดเข้าเซฟ Tidel</div>
+                         <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="block text-[10px] font-bold text-slate-500">หยอดแบงก์</label>
+                            <select value={exPayDenom} onChange={e => setExPayDenom(e.target.value)} className="w-full p-2 border rounded">
+                              <option value="1000">1000 บาท</option><option value="500">500 บาท</option><option value="100">100 บาท</option>
+                            </select>
+                          </div>
+                          <div className="w-24">
+                            <label className="block text-[10px] font-bold text-slate-500">จำนวน (ใบ)</label>
+                            <input type="number" value={exPayQty} onChange={e => setExPayQty(e.target.value)} className="w-full p-2 border rounded text-center" placeholder="0" />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <button onClick={executeExchange} className="w-full py-3 bg-slate-800 text-white rounded-lg font-bold shadow-lg active:scale-95 transition-transform">
+                      ✅ ยืนยันการทำรายการ
+                    </button>
+                  </div>
+                </div>
+
+                {/* Mini Log */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+                  <div className="bg-slate-100 p-2 font-bold text-xs text-slate-600 border-b">📝 ประวัติการแลก/ทอน ล่าสุด</div>
+                  <div className="h-40 overflow-y-auto p-2 text-[11px] space-y-1">
+                    {logs.length === 0 ? <div className="text-center text-slate-400 py-4">ยังไม่มีประวัติ</div> : 
+                      logs.map((l, i) => (
+                        <div key={i} className="border-b border-slate-50 pb-1">
+                          <span className="text-slate-400 mr-1">{l.time}</span> <span className="text-slate-700">{l.msg}</span>
+                        </div>
+                      ))
+                    }
+                  </div>
+                </div>
+
+              </div>
+            )}
+
           </div>
 
-          <div className="max-w-7xl mx-auto mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 border-t pt-4">
-            <button onClick={handleDownloadImage} disabled={isDownloading || !isReadyToCapture} className={`w-full py-4 rounded-lg font-bold text-lg shadow transition-colors flex items-center justify-center gap-2 ${isDownloading ? 'bg-gray-400 text-gray-100 cursor-wait' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}>
-              {isDownloading ? '⏳ กำลังสร้างรูปภาพ...' : (!isReadyToCapture ? '⏳ กำลังโหลดระบบภาพ...' : '📸 ดาวน์โหลดใบสรุป')}
+          {/* Bottom Tabs */}
+          <div className="bg-white border-t border-slate-200 absolute bottom-0 w-full flex justify-around pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+            <button onClick={() => setActiveTab('action')} className={`flex-1 flex flex-col items-center py-3 text-[10px] font-bold ${activeTab === 'action' ? 'text-blue-600' : 'text-slate-400'}`}>
+              <span className="text-2xl mb-1">{activeTab === 'action' ? '🛍️' : '🛒'}</span>รับ/ทอน
             </button>
-            
-            <button onClick={handleSaveToLocal} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-lg font-bold text-lg shadow transition-colors">
-              💾 บันทึก (แค่ตรวจนับเฉยๆ)
+            <button onClick={() => setActiveTab('count')} className={`flex-1 flex flex-col items-center py-3 text-[10px] font-bold ${activeTab === 'count' ? 'text-emerald-600' : 'text-slate-400'}`}>
+              <span className="text-2xl mb-1">🧮</span>ตรวจนับ
             </button>
-            
-            {!shiftActive ? (
-              <button onClick={handleStartShift} className="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded-lg font-bold text-lg shadow transition-colors">
-                ▶️ เริ่มกะ (ตั้งเงินทอนเริ่มต้น)
-              </button>
-            ) : (
-              <button onClick={handleEndShift} className="w-full bg-red-600 hover:bg-red-500 text-white py-4 rounded-lg font-bold text-lg shadow transition-colors">
-                🛑 ปิดกะ (บันทึก & ล้างข้อมูล)
-              </button>
-            )}
+            <button onClick={() => setActiveTab('exchange')} className={`flex-1 flex flex-col items-center py-3 text-[10px] font-bold ${activeTab === 'exchange' ? 'text-amber-600' : 'text-slate-400'}`}>
+              <span className="text-2xl mb-1">🔄</span>แลก/ดราฟ
+            </button>
           </div>
+
+          <style>{`.pb-safe { padding-bottom: env(safe-area-inset-bottom); }`}</style>
         </div>
       );
     };
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<ShiftSurvey />);
+    root.render(<POSCashTracker />);
   </script>
 </body>
 </html>
