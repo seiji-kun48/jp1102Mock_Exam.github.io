@@ -1,472 +1,375 @@
-import React, { useState, useRef, useEffect } from 'react';
-
-const ShiftSurvey = () => {
-  // --- Script Loading State ---
-  const [isReadyToCapture, setIsReadyToCapture] = useState(false);
-
-  // ดึง Script สำหรับแคปหน้าจอ (html2canvas) อย่างปลอดภัย
-  useEffect(() => {
-    if (window.html2canvas) {
-      setIsReadyToCapture(true);
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-    script.async = true;
-    script.onload = () => setIsReadyToCapture(true);
-    script.onerror = () => console.error('Failed to load html2canvas');
-    document.body.appendChild(script);
-  }, []);
-
-  // --- State Management ---
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบสรุปยอดสิ้นกะ (Shift Survey)</title>
   
-  // 0. ข้อมูลยอดรับเงินสดตามระบบ (System Data - คิดคำนวณ)
-  const [systemData, setSystemData] = useState({
-    cashSales: '',
-    depositServices: ''
-  });
-
-  // 1. เงินในลิ้นชัก
-  const [drawer, setDrawer] = useState({
-    500: '', 100: '', 50: '', 20: '',
-    10: '', 5: '', 2: '', 1: '', 0.5: '', 0.25: ''
-  });
-
-  // 2. เงินในเครื่อง Tidel
-  const [tidel, setTidel] = useState({
-    tube1_20: '', tube2_20: '', tube3_20: '',
-    tube4_100: '', tube5_100: '', tube6_100: '', tube7_100: '', tube8_100: ''
-  });
-
-  // 3. เงินนอกเครื่อง
-  const [outsideCash, setOutsideCash] = useState({
-    amount: '',
-    note: ''
-  });
-
-  // 4. บันทึก E-Payment (ไม่รวมในเงินสด)
-  const [ePayments, setEPayments] = useState({
-    truewallet: '', wechat: '', alipay: '', alipayPlus: '', creditCard: ''
-  });
-
-  // 5. บันทึกบริการเงินสดนอกเครื่อง (ไม่รวมในยอดขาย/ลิ้นชัก)
-  const [otherServices, setOtherServices] = useState({
-    topupTrueWallet: '', bankDeposit: '', billPayment: '', other: ''
-  });
-
-  // UI States
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
-  const [savedLogs, setSavedLogs] = useState([]);
-  const surveyRef = useRef(null);
-
-  // โหลดประวัติเมื่อเปิดหน้าเว็บ
-  useEffect(() => {
-    const logs = JSON.parse(localStorage.getItem('posShiftLogs') || '[]');
-    setSavedLogs(logs);
-  }, []);
-
-  // --- Calculations ---
-
-  // ยอดรวมตามระบบ (ที่มีผลกับเงินสด)
-  const systemExpected = (parseFloat(systemData.cashSales) || 0) + (parseFloat(systemData.depositServices) || 0);
-
-  // รวมเงินในลิ้นชัก
-  const drawerTotal = Object.entries(drawer).reduce((total, [denom, count]) => total + (parseFloat(denom) * (parseInt(count) || 0)), 0);
-
-  // รวมเงินในตู้ Tidel
-  const tidelTubesConfig = [
-    { id: 'tube1_20', value: 20 }, { id: 'tube2_20', value: 20 }, { id: 'tube3_20', value: 20 },
-    { id: 'tube4_100', value: 100 }, { id: 'tube5_100', value: 100 }, { id: 'tube6_100', value: 100 },
-    { id: 'tube7_100', value: 100 }, { id: 'tube8_100', value: 100 }
-  ];
-  const tidelTotal = tidelTubesConfig.reduce((total, tube) => total + (tube.value * (parseInt(tidel[tube.id]) || 0)), 0);
-
-  // รวมเงินนอกเครื่อง
-  const outsideTotal = parseFloat(outsideCash.amount) || 0;
+  <!-- โหลด Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
   
-  // สรุปยอดเงินสดทั้งหมดที่นับได้จริง
-  const actualTotal = drawerTotal + tidelTotal + outsideTotal;
+  <!-- โหลด React และ ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   
-  // ผลต่างเงินสด (นับได้จริง - ยอดตามระบบ)
-  const variance = actualTotal - systemExpected;
+  <!-- โหลด Babel สำหรับแปลง JSX ให้ทำงานบนเบราว์เซอร์ได้โดยตรง -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  // รวมยอดจดบันทึก (Logs)
-  const ePaymentTotal = Object.values(ePayments).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
-  const otherServicesTotal = Object.values(otherServices).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+  <!-- โหลด html2canvas สำหรับทำฟังก์ชันดาวน์โหลดรูปภาพ -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  
+  <style>
+    /* ซ่อน Scrollbar เพื่อความสวยงาม แต่ยังเลื่อนได้ปกติ */
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: #f1f1f1; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+</head>
+<body class="bg-gray-100">
 
-  // --- Handlers ---
-  const handleInputChange = (setter) => (field, value) => {
-    if (value === '' || !isNaN(value)) {
-      setter(prev => ({ ...prev, [field]: value }));
-    }
-  };
+  <div id="root"></div>
 
-  const handleTextChange = (setter) => (field, value) => {
-    setter(prev => ({ ...prev, [field]: value }));
-  };
+  <!-- ส่วนของ React Component -->
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
 
-  const formatCurrency = (amount) => new Intl.NumberFormat('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
+    const ShiftSurvey = () => {
+      // --- Script Loading State ---
+      const [isReadyToCapture, setIsReadyToCapture] = useState(false);
 
-  // ฟังก์ชันบันทึกลงเครื่อง (Local Storage)
-  const handleSaveToLocal = () => {
-    if (window.confirm('ต้องการบันทึกข้อมูลนี้ลงในเครื่องเพื่อเปรียบเทียบใช่หรือไม่?')) {
-      const newLog = {
-        id: Date.now(),
-        date: new Date().toLocaleString('th-TH'),
-        systemExpected, actualTotal, variance,
-        drawerTotal, tidelTotal, outsideTotal, ePaymentTotal, otherServicesTotal
-      };
-      const updatedLogs = [newLog, ...savedLogs].slice(0, 30); // เก็บสูงสุด 30 รายการ
-      localStorage.setItem('posShiftLogs', JSON.stringify(updatedLogs));
-      setSavedLogs(updatedLogs);
-      alert('บันทึกข้อมูลลงเครื่องสำเร็จ สามารถกดปุ่ม "ดูประวัติ" เพื่อเปรียบเทียบได้');
-    }
-  };
+      // ตรวจสอบ html2canvas
+      useEffect(() => {
+        if (window.html2canvas) {
+          setIsReadyToCapture(true);
+        } else {
+          // Fallback เผื่อโหลดไม่ติดจาก <head>
+          const script = document.createElement('script');
+          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+          script.async = true;
+          script.onload = () => setIsReadyToCapture(true);
+          document.body.appendChild(script);
+        }
+      }, []);
 
-  // ฟังก์ชันดาวน์โหลดหน้าจอเป็นรูปภาพ
-  const handleDownloadImage = async () => {
-    if (!surveyRef.current) return;
-    if (!window.html2canvas) {
-      alert('ระบบกำลังโหลดเครื่องมือสร้างรูปภาพ กรุณารอสักครู่แล้วลองใหม่อีกครั้ง');
-      return;
-    }
-    
-    setIsDownloading(true);
-    try {
-      const canvas = await window.html2canvas(surveyRef.current, {
-        scale: 2,
-        backgroundColor: '#f3f4f6',
-        logging: false,
-        useCORS: true
+      // --- State Management ---
+      const [systemData, setSystemData] = useState({ cashSales: '', depositServices: '' });
+      const [drawer, setDrawer] = useState({
+        500: '', 100: '', 50: '', 20: '',
+        10: '', 5: '', 2: '', 1: '', 0.5: '', 0.25: ''
       });
-      const image = canvas.toDataURL('image/png');
-      const link = document.createElement('a');
-      link.href = image;
-      link.download = `Shift-Survey-${new Date().getTime()}.png`;
-      link.click();
-    } catch (error) {
-      console.error('Error generating image:', error);
-      alert('เกิดข้อผิดพลาดในการสร้างรูปภาพ ลองใช้เว็บบราวเซอร์อื่น เช่น Chrome หรือ Safari');
-    } finally {
-      setIsDownloading(false);
-    }
-  };
+      const [tidel, setTidel] = useState({
+        tube1_20: '', tube2_20: '', tube3_20: '',
+        tube4_100: '', tube5_100: '', tube6_100: '', tube7_100: '', tube8_100: ''
+      });
+      const [outsideCash, setOutsideCash] = useState({ amount: '', note: '' });
+      const [ePayments, setEPayments] = useState({ truewallet: '', wechat: '', alipay: '', alipayPlus: '', creditCard: '' });
+      const [otherServices, setOtherServices] = useState({ topupTrueWallet: '', bankDeposit: '', billPayment: '', other: '' });
 
-  return (
-    <div className="min-h-screen bg-gray-100 p-2 sm:p-4 font-sans text-gray-800 pb-24">
+      const [isDownloading, setIsDownloading] = useState(false);
+      const [showHistory, setShowHistory] = useState(false);
+      const [savedLogs, setSavedLogs] = useState([]);
+      const surveyRef = useRef(null);
+
+      useEffect(() => {
+        const logs = JSON.parse(localStorage.getItem('posShiftLogs') || '[]');
+        setSavedLogs(logs);
+      }, []);
+
+      // --- Calculations ---
+      const systemExpected = (parseFloat(systemData.cashSales) || 0) + (parseFloat(systemData.depositServices) || 0);
+      const drawerTotal = Object.entries(drawer).reduce((total, [denom, count]) => total + (parseFloat(denom) * (parseInt(count) || 0)), 0);
       
-      {/* Header & Global Actions */}
-      <div className="max-w-7xl mx-auto mb-4 flex flex-col sm:flex-row justify-between items-center bg-white p-4 rounded-lg shadow border border-gray-200">
-        <div>
-          <h1 className="text-2xl font-bold text-blue-800">🧾 ระบบสรุปยอดสิ้นกะ (Shift Survey)</h1>
-          <p className="text-sm text-gray-500 mt-1">พร้อมระบบบันทึก Log ธุรกรรมอื่นๆ (ไม่กระทบเงินสด)</p>
-        </div>
-        <div className="mt-4 sm:mt-0 flex gap-2 w-full sm:w-auto">
-          <button 
-            onClick={() => setShowHistory(true)}
-            className="flex-1 sm:flex-none bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-4 py-2 rounded-lg font-bold border border-indigo-300 transition-colors"
-          >
-            🕒 ดูประวัติ (History)
-          </button>
-          <button 
-            onClick={handleSaveToLocal}
-            className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold shadow transition-colors"
-          >
-            💾 บันทึกลงเครื่อง
-          </button>
-        </div>
-      </div>
+      const tidelTubesConfig = [
+        { id: 'tube1_20', value: 20 }, { id: 'tube2_20', value: 20 }, { id: 'tube3_20', value: 20 },
+        { id: 'tube4_100', value: 100 }, { id: 'tube5_100', value: 100 }, { id: 'tube6_100', value: 100 },
+        { id: 'tube7_100', value: 100 }, { id: 'tube8_100', value: 100 }
+      ];
+      const tidelTotal = tidelTubesConfig.reduce((total, tube) => total + (tube.value * (parseInt(tidel[tube.id]) || 0)), 0);
+      
+      const outsideTotal = parseFloat(outsideCash.amount) || 0;
+      const actualTotal = drawerTotal + tidelTotal + outsideTotal;
+      const variance = actualTotal - systemExpected;
+      
+      const ePaymentTotal = Object.values(ePayments).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+      const otherServicesTotal = Object.values(otherServices).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
 
-      {/* History Modal */}
-      {showHistory && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col">
-            <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
-              <h2 className="text-xl font-bold text-gray-800">🕒 ประวัติการบันทึก (Shift History)</h2>
-              <button onClick={() => setShowHistory(false)} className="text-gray-500 hover:text-red-500 font-bold text-xl px-2">&times;</button>
+      // --- Handlers ---
+      const handleInputChange = (setter) => (field, value) => {
+        if (value === '' || !isNaN(value)) setter(prev => ({ ...prev, [field]: value }));
+      };
+
+      const handleTextChange = (setter) => (field, value) => {
+        setter(prev => ({ ...prev, [field]: value }));
+      };
+
+      const formatCurrency = (amount) => new Intl.NumberFormat('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
+
+      const handleSaveToLocal = () => {
+        if (window.confirm('ต้องการบันทึกข้อมูลนี้ลงในเครื่องเพื่อเปรียบเทียบใช่หรือไม่?')) {
+          const newLog = {
+            id: Date.now(),
+            date: new Date().toLocaleString('th-TH'),
+            systemExpected, actualTotal, variance,
+            drawerTotal, tidelTotal, outsideTotal, ePaymentTotal, otherServicesTotal
+          };
+          const updatedLogs = [newLog, ...savedLogs].slice(0, 30);
+          localStorage.setItem('posShiftLogs', JSON.stringify(updatedLogs));
+          setSavedLogs(updatedLogs);
+          alert('บันทึกข้อมูลลงเครื่องสำเร็จ สามารถกดปุ่ม "ดูประวัติ" เพื่อเปรียบเทียบได้');
+        }
+      };
+
+      const handleDownloadImage = async () => {
+        if (!surveyRef.current) return;
+        if (!window.html2canvas) {
+          alert('ระบบกำลังโหลดเครื่องมือสร้างรูปภาพ กรุณารอสักครู่แล้วลองใหม่อีกครั้ง');
+          return;
+        }
+        setIsDownloading(true);
+        try {
+          const canvas = await window.html2canvas(surveyRef.current, {
+            scale: 2,
+            backgroundColor: '#f3f4f6',
+            logging: false,
+            useCORS: true
+          });
+          const image = canvas.toDataURL('image/png');
+          const link = document.createElement('a');
+          link.href = image;
+          link.download = `Shift-Survey-${new Date().getTime()}.png`;
+          link.click();
+        } catch (error) {
+          console.error('Error generating image:', error);
+          alert('เกิดข้อผิดพลาดในการสร้างรูปภาพ');
+        } finally {
+          setIsDownloading(false);
+        }
+      };
+
+      return (
+        <div className="min-h-screen p-2 sm:p-4 font-sans text-gray-800 pb-24">
+          <div className="max-w-7xl mx-auto mb-4 flex flex-col sm:flex-row justify-between items-center bg-white p-4 rounded-lg shadow border border-gray-200">
+            <div>
+              <h1 className="text-2xl font-bold text-blue-800">🧾 ระบบสรุปยอดสิ้นกะ (Shift Survey)</h1>
+              <p className="text-sm text-gray-500 mt-1">พร้อมระบบบันทึก Log ธุรกรรมอื่นๆ (ไม่กระทบเงินสด)</p>
             </div>
-            <div className="p-4 overflow-y-auto flex-1">
-              {savedLogs.length === 0 ? (
-                <p className="text-center text-gray-500 py-8">ยังไม่มีประวัติการบันทึก</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-left whitespace-nowrap">
-                    <thead className="bg-gray-100 text-gray-600 font-bold">
-                      <tr>
-                        <th className="p-3 rounded-tl-lg">วันเวลาที่บันทึก</th>
-                        <th className="p-3 text-right">ยอดระบบ</th>
-                        <th className="p-3 text-right">นับได้จริง</th>
-                        <th className="p-3 text-right">ผลต่าง</th>
-                        <th className="p-3 text-right">Log บริการ/E-Pay</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {savedLogs.map(log => (
-                        <tr key={log.id} className="hover:bg-blue-50 transition-colors">
-                          <td className="p-3 text-gray-800 font-medium">{log.date}</td>
-                          <td className="p-3 text-right text-gray-600">฿{formatCurrency(log.systemExpected)}</td>
-                          <td className="p-3 text-right font-bold text-blue-600">฿{formatCurrency(log.actualTotal)}</td>
-                          <td className={`p-3 text-right font-bold ${log.variance === 0 ? 'text-green-500' : log.variance > 0 ? 'text-blue-500' : 'text-red-500'}`}>
-                            {log.variance > 0 ? '+' : ''}{formatCurrency(log.variance)}
-                          </td>
-                          <td className="p-3 text-right text-purple-600 text-xs">
-                            ฿{formatCurrency(log.ePaymentTotal + log.otherServicesTotal)}
-                          </td>
-                        </tr>
+            <div className="mt-4 sm:mt-0 flex gap-2 w-full sm:w-auto">
+              <button onClick={() => setShowHistory(true)} className="flex-1 sm:flex-none bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-4 py-2 rounded-lg font-bold border border-indigo-300 transition-colors">
+                🕒 ดูประวัติ
+              </button>
+              <button onClick={handleSaveToLocal} className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold shadow transition-colors">
+                💾 บันทึกลงเครื่อง
+              </button>
+            </div>
+          </div>
+
+          {showHistory && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col">
+                <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
+                  <h2 className="text-xl font-bold text-gray-800">🕒 ประวัติการบันทึก (Shift History)</h2>
+                  <button onClick={() => setShowHistory(false)} className="text-gray-500 hover:text-red-500 font-bold text-xl px-2">&times;</button>
+                </div>
+                <div className="p-4 overflow-y-auto flex-1">
+                  {savedLogs.length === 0 ? (
+                    <p className="text-center text-gray-500 py-8">ยังไม่มีประวัติการบันทึก</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm text-left whitespace-nowrap">
+                        <thead className="bg-gray-100 text-gray-600 font-bold">
+                          <tr>
+                            <th className="p-3 rounded-tl-lg">วันเวลาที่บันทึก</th>
+                            <th className="p-3 text-right">ยอดระบบ</th>
+                            <th className="p-3 text-right">นับได้จริง</th>
+                            <th className="p-3 text-right">ผลต่าง</th>
+                            <th className="p-3 text-right">Log บริการ/E-Pay</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {savedLogs.map(log => (
+                            <tr key={log.id} className="hover:bg-blue-50 transition-colors">
+                              <td className="p-3 text-gray-800 font-medium">{log.date}</td>
+                              <td className="p-3 text-right text-gray-600">฿{formatCurrency(log.systemExpected)}</td>
+                              <td className="p-3 text-right font-bold text-blue-600">฿{formatCurrency(log.actualTotal)}</td>
+                              <td className={`p-3 text-right font-bold ${log.variance === 0 ? 'text-green-500' : log.variance > 0 ? 'text-blue-500' : 'text-red-500'}`}>
+                                {log.variance > 0 ? '+' : ''}{formatCurrency(log.variance)}
+                              </td>
+                              <td className="p-3 text-right text-purple-600 text-xs">฿{formatCurrency(log.ePaymentTotal + log.otherServicesTotal)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div ref={surveyRef} className="pb-4 bg-gray-100">
+            <div className="max-w-7xl mx-auto grid grid-cols-1 xl:grid-cols-4 gap-4">
+              
+              <div className="xl:col-span-1 space-y-4">
+                <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+                  <div className="bg-indigo-600 px-4 py-3 text-white">
+                    <h2 className="font-bold">💻 ยอดเงินสดตามระบบ</h2>
+                  </div>
+                  <div className="p-4 space-y-3 bg-indigo-50/30">
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-1">ยอดขายเงินสด</label>
+                      <input type="number" className="w-full p-2 border border-indigo-200 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-right font-bold text-indigo-900" placeholder="0.00" value={systemData.cashSales} onChange={(e) => handleInputChange(setSystemData)('cashSales', e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-1">บริการฝากเงิน</label>
+                      <input type="number" className="w-full p-2 border border-indigo-200 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-right font-bold text-indigo-900" placeholder="0.00" value={systemData.depositServices} onChange={(e) => handleInputChange(setSystemData)('depositServices', e.target.value)} />
+                    </div>
+                    <div className="border-t border-indigo-200 pt-2 mt-2">
+                      <div className="flex justify-between font-bold text-indigo-800">
+                        <span>รวมยอดระบบ:</span><span>฿{formatCurrency(systemExpected)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg shadow border border-purple-200 overflow-hidden">
+                  <div className="bg-purple-600 px-4 py-3 text-white"><h2 className="font-bold">📱 Log ยอด E-Payment</h2></div>
+                  <div className="p-4 space-y-2 bg-purple-50/30">
+                    {[{ id: 'truewallet', label: 'TrueWallet' }, { id: 'wechat', label: 'WeChat Pay' }, { id: 'alipay', label: 'Alipay' }, { id: 'alipayPlus', label: 'Alipay+' }, { id: 'creditCard', label: 'บัตรเครดิต' }].map(item => (
+                      <div key={item.id} className="flex items-center justify-between">
+                        <label className="text-sm font-semibold text-gray-600">{item.label}</label>
+                        <input type="number" className="w-28 p-1.5 border border-purple-200 rounded focus:ring-2 focus:ring-purple-500 outline-none text-right text-sm" placeholder="0.00" value={ePayments[item.id]} onChange={(e) => handleInputChange(setEPayments)(item.id, e.target.value)} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg shadow border border-pink-200 overflow-hidden">
+                  <div className="bg-pink-600 px-4 py-3 text-white"><h2 className="font-bold">🏧 Log บริการ (นอกเครื่อง)</h2></div>
+                  <div className="p-4 space-y-2 bg-pink-50/30">
+                    {[{ id: 'topupTrueWallet', label: 'เติมเงิน TrueWallet' }, { id: 'bankDeposit', label: 'ฝากเงินธนาคาร' }, { id: 'billPayment', label: 'จ่ายบิล' }, { id: 'other', label: 'อื่นๆ' }].map(item => (
+                      <div key={item.id} className="flex items-center justify-between">
+                        <label className="text-sm font-semibold text-gray-600">{item.label}</label>
+                        <input type="number" className="w-28 p-1.5 border border-pink-200 rounded focus:ring-2 focus:ring-pink-500 outline-none text-right text-sm" placeholder="0.00" value={otherServices[item.id]} onChange={(e) => handleInputChange(setOtherServices)(item.id, e.target.value)} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="xl:col-span-2 space-y-4">
+                <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+                  <div className="bg-blue-600 px-4 py-3 flex justify-between items-center text-white">
+                    <h2 className="font-bold text-lg">1. เงินในลิ้นชัก (Cash Drawer)</h2>
+                    <span className="font-bold text-xl">฿{formatCurrency(drawerTotal)}</span>
+                  </div>
+                  <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <h3 className="font-semibold text-gray-600 border-b pb-1 mb-2">💵 ธนบัตร (จำนวนใบ)</h3>
+                      {[500, 100, 50, 20].map(denom => (
+                        <div key={denom} className="flex items-center justify-between bg-gray-50 p-2 rounded">
+                          <label className="w-12 font-bold text-gray-700">{denom}</label>
+                          <span className="text-gray-400 text-xs">x</span>
+                          <input type="number" className="w-20 p-1.5 border border-gray-300 rounded text-center focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0" value={drawer[denom]} onChange={(e) => handleInputChange(setDrawer)(denom, e.target.value)} />
+                          <span className="w-20 text-right text-gray-600 font-medium text-sm">{formatCurrency(denom * (parseInt(drawer[denom]) || 0))}</span>
+                        </div>
                       ))}
-                    </tbody>
-                  </table>
+                    </div>
+                    <div className="space-y-2">
+                      <h3 className="font-semibold text-gray-600 border-b pb-1 mb-2">🪙 เหรียญ (จำนวนเหรียญ)</h3>
+                      {[10, 5, 2, 1, 0.5, 0.25].map(denom => (
+                        <div key={denom} className="flex items-center justify-between bg-gray-50 p-2 rounded">
+                          <label className="w-12 font-bold text-gray-700">{denom}</label>
+                          <span className="text-gray-400 text-xs">x</span>
+                          <input type="number" className="w-20 p-1.5 border border-gray-300 rounded text-center focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0" value={drawer[denom]} onChange={(e) => handleInputChange(setDrawer)(denom, e.target.value)} />
+                          <span className="w-20 text-right text-gray-600 font-medium text-sm">{formatCurrency(denom * (parseInt(drawer[denom]) || 0))}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              )}
+
+                <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+                   <div className="bg-orange-500 px-4 py-3 flex justify-between items-center text-white">
+                      <h2 className="font-bold text-lg">2. เงินนอกเครื่อง (Outside Cash)</h2>
+                      <span className="font-bold text-xl">฿{formatCurrency(outsideTotal)}</span>
+                  </div>
+                  <div className="p-4 flex flex-col sm:flex-row gap-4">
+                    <div className="flex-[1]">
+                      <label className="block text-xs font-bold text-gray-700 mb-1">ยอดเงินรวม (บาท)</label>
+                      <input type="number" className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 outline-none text-right font-bold" placeholder="0.00" value={outsideCash.amount} onChange={(e) => handleInputChange(setOutsideCash)('amount', e.target.value)} />
+                    </div>
+                    <div className="flex-[2]">
+                      <label className="block text-xs font-bold text-gray-700 mb-1">หมายเหตุ</label>
+                      <input type="text" className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 outline-none bg-gray-50" placeholder="เช่น เงินทอนสำรอง..." value={outsideCash.note} onChange={(e) => handleTextChange(setOutsideCash)('note', e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="xl:col-span-1 space-y-4">
+                <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+                   <div className="bg-emerald-600 px-4 py-3 flex justify-between items-center text-white">
+                      <h2 className="font-bold text-lg">3. ตู้ Tidel</h2>
+                      <span className="font-bold text-xl">฿{formatCurrency(tidelTotal)}</span>
+                  </div>
+                  <div className="p-3 space-y-1 bg-gray-50">
+                    <div className="grid grid-cols-3 text-xs font-bold text-gray-500 mb-1 px-1"><div>ช่อง</div><div className="text-center">ใบ</div><div className="text-right">รวม</div></div>
+                    {tidelTubesConfig.map((tube, index) => (
+                      <div key={tube.id} className="grid grid-cols-3 items-center gap-2">
+                        <div className="font-bold text-emerald-700 text-sm"><span className="text-[10px] text-gray-400 block -mb-1">#{index + 1}</span>฿{tube.value}</div>
+                        <input type="number" className="w-full p-1 border border-gray-300 rounded text-center focus:ring-2 focus:ring-emerald-500 outline-none text-sm" placeholder="0" value={tidel[tube.id]} onChange={(e) => handleInputChange(setTidel)(tube.id, e.target.value)} />
+                        <div className="text-right font-medium text-gray-700 text-sm">{formatCurrency(tube.value * (parseInt(tidel[tube.id]) || 0))}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-gray-800 text-white rounded-lg shadow overflow-hidden sticky top-4">
+                  <div className="px-4 py-3 border-b border-gray-700"><h2 className="text-lg font-bold">📊 สรุปผลเงินสด (Cash Summary)</h2></div>
+                  <div className="p-4 space-y-2 text-sm">
+                    <div className="flex justify-between text-gray-300"><span>1. ลิ้นชัก</span><span>{formatCurrency(drawerTotal)}</span></div>
+                    <div className="flex justify-between text-gray-300"><span>2. ตู้ Tidel</span><span>{formatCurrency(tidelTotal)}</span></div>
+                    <div className="flex justify-between text-gray-300"><span>3. นอกเครื่อง</span><span>{formatCurrency(outsideTotal)}</span></div>
+                    
+                    <div className="border-t border-gray-600 pt-2 mt-2">
+                      <div className="text-gray-400 text-xs">ยอดเงินสดที่นับได้จริง</div>
+                      <div className="text-2xl font-bold text-right text-blue-400">฿{formatCurrency(actualTotal)}</div>
+                    </div>
+
+                    <div className="bg-gray-900 rounded p-3 mt-3 border border-gray-700">
+                      <div className="text-gray-400 text-xs mb-1 flex justify-between"><span>ผลต่าง (Variance)</span><span>เป้า: ฿{formatCurrency(systemExpected)}</span></div>
+                      <div className={`text-xl font-bold text-right ${variance === 0 ? 'text-green-400' : variance > 0 ? 'text-blue-400' : 'text-red-400'}`}>
+                        {variance > 0 ? '+' : ''}{formatCurrency(variance)}
+                        <span className="text-xs font-normal ml-1">{variance === 0 ? '(พอดี)' : variance > 0 ? '(เกิน)' : '(ขาด)'}</span>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-gray-600 pt-2 mt-3 space-y-1">
+                       <div className="text-gray-400 text-[10px] uppercase tracking-wider text-center mb-2">--- ยอดจดบันทึกเพิ่มเติม ---</div>
+                       <div className="flex justify-between text-purple-300 text-xs"><span>รวม E-Payment</span><span>฿{formatCurrency(ePaymentTotal)}</span></div>
+                       <div className="flex justify-between text-pink-300 text-xs"><span>รวมบริการนอกเครื่อง</span><span>฿{formatCurrency(otherServicesTotal)}</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
+          </div>
+
+          <div className="max-w-7xl mx-auto mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4">
+            <button onClick={handleDownloadImage} disabled={isDownloading || !isReadyToCapture} className={`w-full py-4 rounded-lg font-bold text-lg shadow transition-colors flex items-center justify-center gap-2 ${isDownloading ? 'bg-gray-400 text-gray-100 cursor-wait' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}>
+              {isDownloading ? '⏳ กำลังสร้างรูปภาพ...' : (!isReadyToCapture ? '⏳ กำลังโหลดระบบภาพ...' : '📸 ดาวน์โหลดใบสรุป')}
+            </button>
+            <button onClick={() => { handleSaveToLocal(); alert('ปิดกะเรียบร้อย!'); }} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-lg font-bold text-lg shadow transition-colors">
+              ✅ ยืนยันการปิดกะ
+            </button>
           </div>
         </div>
-      )}
+      );
+    };
 
-      {/* Main Survey Form (Area to Capture) */}
-      <div ref={surveyRef} className="pb-4 bg-gray-100">
-        
-        <div className="max-w-7xl mx-auto grid grid-cols-1 xl:grid-cols-4 gap-4">
-          
-          {/* Left Area: System Data & Logs (2 Columns on XL) */}
-          <div className="xl:col-span-1 space-y-4">
-            
-            {/* System Expected */}
-            <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
-              <div className="bg-indigo-600 px-4 py-3 text-white">
-                <h2 className="font-bold">💻 ยอดเงินสดตามระบบ</h2>
-                <p className="text-xs text-indigo-200">เพื่อนำไปเทียบกับเงินในลิ้นชัก</p>
-              </div>
-              <div className="p-4 space-y-3 bg-indigo-50/30">
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">ยอดขายเงินสด</label>
-                  <input type="number" className="w-full p-2 border border-indigo-200 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-right font-bold text-indigo-900" placeholder="0.00" value={systemData.cashSales} onChange={(e) => handleInputChange(setSystemData)('cashSales', e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">บริการฝากเงิน</label>
-                  <input type="number" className="w-full p-2 border border-indigo-200 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-right font-bold text-indigo-900" placeholder="0.00" value={systemData.depositServices} onChange={(e) => handleInputChange(setSystemData)('depositServices', e.target.value)} />
-                </div>
-                <div className="border-t border-indigo-200 pt-2 mt-2">
-                  <div className="flex justify-between font-bold text-indigo-800">
-                    <span>รวมยอดระบบ:</span>
-                    <span>฿{formatCurrency(systemExpected)}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* E-Payment Logs */}
-            <div className="bg-white rounded-lg shadow border border-purple-200 overflow-hidden">
-              <div className="bg-purple-600 px-4 py-3 text-white">
-                <h2 className="font-bold">📱 Log ยอด E-Payment</h2>
-                <p className="text-xs text-purple-200">ไม่นำไปรวมกับยอดเงินสด</p>
-              </div>
-              <div className="p-4 space-y-2 bg-purple-50/30">
-                {[
-                  { id: 'truewallet', label: 'TrueWallet' },
-                  { id: 'wechat', label: 'WeChat Pay' },
-                  { id: 'alipay', label: 'Alipay' },
-                  { id: 'alipayPlus', label: 'Alipay+' },
-                  { id: 'creditCard', label: 'บัตรเครดิต' }
-                ].map(item => (
-                  <div key={item.id} className="flex items-center justify-between">
-                    <label className="text-sm font-semibold text-gray-600">{item.label}</label>
-                    <input type="number" className="w-28 p-1.5 border border-purple-200 rounded focus:ring-2 focus:ring-purple-500 outline-none text-right text-sm" placeholder="0.00" value={ePayments[item.id]} onChange={(e) => handleInputChange(setEPayments)(item.id, e.target.value)} />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Other Cash Services Logs */}
-            <div className="bg-white rounded-lg shadow border border-pink-200 overflow-hidden">
-              <div className="bg-pink-600 px-4 py-3 text-white">
-                <h2 className="font-bold">🏧 Log บริการ (แยกต่างหาก)</h2>
-                <p className="text-xs text-pink-200">ไม่รวมในลิ้นชัก/ยอดขาย</p>
-              </div>
-              <div className="p-4 space-y-2 bg-pink-50/30">
-                {[
-                  { id: 'topupTrueWallet', label: 'เติมเงิน TrueWallet' },
-                  { id: 'bankDeposit', label: 'ฝากเงินธนาคาร' },
-                  { id: 'billPayment', label: 'จ่ายบิล' },
-                  { id: 'other', label: 'อื่นๆ' }
-                ].map(item => (
-                  <div key={item.id} className="flex items-center justify-between">
-                    <label className="text-sm font-semibold text-gray-600">{item.label}</label>
-                    <input type="number" className="w-28 p-1.5 border border-pink-200 rounded focus:ring-2 focus:ring-pink-500 outline-none text-right text-sm" placeholder="0.00" value={otherServices[item.id]} onChange={(e) => handleInputChange(setOtherServices)(item.id, e.target.value)} />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-          </div>
-
-          {/* Middle Area: Physical Cash Input (2 Columns on XL) */}
-          <div className="xl:col-span-2 space-y-4">
-            
-            {/* Section 1: Drawer */}
-            <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
-              <div className="bg-blue-600 px-4 py-3 flex justify-between items-center text-white">
-                <h2 className="font-bold text-lg">1. เงินในลิ้นชัก (Cash Drawer)</h2>
-                <span className="font-bold text-xl">฿{formatCurrency(drawerTotal)}</span>
-              </div>
-              
-              <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <h3 className="font-semibold text-gray-600 border-b pb-1 mb-2">💵 ธนบัตร (จำนวนใบ)</h3>
-                  {[500, 100, 50, 20].map(denom => (
-                    <div key={denom} className="flex items-center justify-between bg-gray-50 p-2 rounded">
-                      <label className="w-12 font-bold text-gray-700">{denom}</label>
-                      <span className="text-gray-400 text-xs">x</span>
-                      <input type="number" className="w-20 p-1.5 border border-gray-300 rounded text-center focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0" value={drawer[denom]} onChange={(e) => handleInputChange(setDrawer)(denom, e.target.value)} />
-                      <span className="w-20 text-right text-gray-600 font-medium text-sm">
-                        {formatCurrency(denom * (parseInt(drawer[denom]) || 0))}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <div className="space-y-2">
-                  <h3 className="font-semibold text-gray-600 border-b pb-1 mb-2">🪙 เหรียญ (จำนวนเหรียญ)</h3>
-                  {[10, 5, 2, 1, 0.5, 0.25].map(denom => (
-                    <div key={denom} className="flex items-center justify-between bg-gray-50 p-2 rounded">
-                      <label className="w-12 font-bold text-gray-700">{denom}</label>
-                      <span className="text-gray-400 text-xs">x</span>
-                      <input type="number" className="w-20 p-1.5 border border-gray-300 rounded text-center focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0" value={drawer[denom]} onChange={(e) => handleInputChange(setDrawer)(denom, e.target.value)} />
-                      <span className="w-20 text-right text-gray-600 font-medium text-sm">
-                        {formatCurrency(denom * (parseInt(drawer[denom]) || 0))}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Section 2: Outside Cash */}
-            <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
-               <div className="bg-orange-500 px-4 py-3 flex justify-between items-center text-white">
-                  <h2 className="font-bold text-lg">2. เงินนอกเครื่อง (Outside Cash)</h2>
-                  <span className="font-bold text-xl">฿{formatCurrency(outsideTotal)}</span>
-              </div>
-              <div className="p-4 flex flex-col sm:flex-row gap-4">
-                <div className="flex-[1]">
-                  <label className="block text-xs font-bold text-gray-700 mb-1">ยอดเงินรวม (บาท)</label>
-                  <input type="number" className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 outline-none text-right font-bold" placeholder="0.00" value={outsideCash.amount} onChange={(e) => handleInputChange(setOutsideCash)('amount', e.target.value)} />
-                </div>
-                <div className="flex-[2]">
-                  <label className="block text-xs font-bold text-gray-700 mb-1">หมายเหตุ</label>
-                  <input type="text" className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 outline-none bg-gray-50" placeholder="เช่น เงินทอนสำรอง..." value={outsideCash.note} onChange={(e) => handleTextChange(setOutsideCash)('note', e.target.value)} />
-                </div>
-              </div>
-            </div>
-
-          </div>
-
-          {/* Right Area: Tidel & Summary (1 Column on XL) */}
-          <div className="xl:col-span-1 space-y-4">
-            
-            {/* Section 3: Tidel */}
-            <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
-               <div className="bg-emerald-600 px-4 py-3 flex justify-between items-center text-white">
-                  <h2 className="font-bold text-lg">3. ตู้ Tidel</h2>
-                  <span className="font-bold text-xl">฿{formatCurrency(tidelTotal)}</span>
-              </div>
-              <div className="p-3 space-y-1 bg-gray-50">
-                <div className="grid grid-cols-3 text-xs font-bold text-gray-500 mb-1 px-1">
-                  <div>ช่อง</div><div className="text-center">ใบ</div><div className="text-right">รวม</div>
-                </div>
-                {tidelTubesConfig.map((tube, index) => (
-                  <div key={tube.id} className="grid grid-cols-3 items-center gap-2">
-                    <div className="font-bold text-emerald-700 text-sm">
-                      <span className="text-[10px] text-gray-400 block -mb-1">#{index + 1}</span>฿{tube.value}
-                    </div>
-                    <input type="number" className="w-full p-1 border border-gray-300 rounded text-center focus:ring-2 focus:ring-emerald-500 outline-none text-sm" placeholder="0" value={tidel[tube.id]} onChange={(e) => handleInputChange(setTidel)(tube.id, e.target.value)} />
-                    <div className="text-right font-medium text-gray-700 text-sm">
-                      {formatCurrency(tube.value * (parseInt(tidel[tube.id]) || 0))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Summary Panel */}
-            <div className="bg-gray-800 text-white rounded-lg shadow overflow-hidden sticky top-4">
-              <div className="px-4 py-3 border-b border-gray-700">
-                <h2 className="text-lg font-bold">📊 สรุปผลเงินสด (Cash Summary)</h2>
-              </div>
-              
-              <div className="p-4 space-y-2 text-sm">
-                <div className="flex justify-between text-gray-300">
-                  <span>1. ลิ้นชัก</span><span>{formatCurrency(drawerTotal)}</span>
-                </div>
-                <div className="flex justify-between text-gray-300">
-                  <span>2. ตู้ Tidel</span><span>{formatCurrency(tidelTotal)}</span>
-                </div>
-                <div className="flex justify-between text-gray-300">
-                  <span>3. นอกเครื่อง</span><span>{formatCurrency(outsideTotal)}</span>
-                </div>
-                
-                <div className="border-t border-gray-600 pt-2 mt-2">
-                  <div className="text-gray-400 text-xs">ยอดเงินสดที่นับได้จริง</div>
-                  <div className="text-2xl font-bold text-right text-blue-400">
-                    ฿{formatCurrency(actualTotal)}
-                  </div>
-                </div>
-
-                <div className="bg-gray-900 rounded p-3 mt-3 border border-gray-700">
-                  <div className="text-gray-400 text-xs mb-1 flex justify-between">
-                    <span>ผลต่าง (Variance)</span>
-                    <span>เป้า: ฿{formatCurrency(systemExpected)}</span>
-                  </div>
-                  <div className={`text-xl font-bold text-right ${variance === 0 ? 'text-green-400' : variance > 0 ? 'text-blue-400' : 'text-red-400'}`}>
-                    {variance > 0 ? '+' : ''}{formatCurrency(variance)}
-                    <span className="text-xs font-normal ml-1">
-                      {variance === 0 ? '(พอดี)' : variance > 0 ? '(เกิน)' : '(ขาด)'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* แสดงยอด Log ในใบสรุป */}
-                <div className="border-t border-gray-600 pt-2 mt-3 space-y-1">
-                   <div className="text-gray-400 text-[10px] uppercase tracking-wider text-center mb-2">--- ยอดจดบันทึกเพิ่มเติม (ไม่รวมในเงินสด) ---</div>
-                   <div className="flex justify-between text-purple-300 text-xs">
-                     <span>รวม E-Payment</span><span>฿{formatCurrency(ePaymentTotal)}</span>
-                   </div>
-                   <div className="flex justify-between text-pink-300 text-xs">
-                     <span>รวมบริการนอกเครื่อง</span><span>฿{formatCurrency(otherServicesTotal)}</span>
-                   </div>
-                </div>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </div>
-
-      {/* Action Buttons */}
-      <div className="max-w-7xl mx-auto mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4">
-        <button 
-          onClick={handleDownloadImage}
-          disabled={isDownloading || !isReadyToCapture}
-          className={`w-full py-4 rounded-lg font-bold text-lg shadow transition-colors flex items-center justify-center gap-2 ${
-            isDownloading ? 'bg-gray-400 text-gray-100 cursor-wait' : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-          }`}
-        >
-          {isDownloading ? '⏳ กำลังสร้างรูปภาพ...' : (!isReadyToCapture ? '⏳ กำลังโหลดระบบภาพ...' : '📸 ดาวน์โหลดใบสรุปเป็นรูปภาพ')}
-        </button>
-        
-        <button 
-          onClick={() => {
-            handleSaveToLocal();
-            alert('ปิดกะเรียบร้อย!');
-          }} 
-          className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-lg font-bold text-lg shadow transition-colors"
-        >
-          ✅ ยืนยันการปิดกะ
-        </button>
-      </div>
-
-    </div>
-  );
-};
-
-export default ShiftSurvey;
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<ShiftSurvey />);
+  </script>
+</body>
+</html>
