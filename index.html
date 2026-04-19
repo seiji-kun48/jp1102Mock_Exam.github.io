@@ -11,7 +11,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <style>
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f1f5f9; overscroll-behavior-y: auto; }
-    /* สีของธนบัตรและเหรียญ */
     .bg-b1000 { background-color: #94a3b8; color: white; border-bottom: 4px solid #64748b; }
     .bg-b500 { background-color: #a855f7; color: white; border-bottom: 4px solid #7e22ce; }
     .bg-b100 { background-color: #ef4444; color: white; border-bottom: 4px solid #b91c1c; }
@@ -19,8 +18,6 @@
     .bg-b20 { background-color: #22c55e; color: white; border-bottom: 4px solid #15803d; }
     .bg-coin { background-color: #fbbf24; color: #78350f; border-bottom: 4px solid #d97706; }
     .btn-press:active { transform: translateY(4px); border-bottom-width: 0px; margin-top: 4px; }
-    
-    /* Scrollbar */
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
@@ -87,8 +84,8 @@
 
       // --- Pause/Break State ---
       const [isPaused, setIsPaused] = useState(false);
-      const [pauseIn, setPauseIn] = useState('');
-      const [pauseOut, setPauseOut] = useState('');
+      const [isPostBreak, setIsPostBreak] = useState(false); // เช็คว่ากำลังอยู่ในช่วงนับหลังพักหรือไม่
+      const [preBreakTotal, setPreBreakTotal] = useState(0); // จำยอดตอนก่อนพัก
 
       // --- Count Tab ---
       const [countSections, setCountSections] = useState({ pos1: true, pos2: false, tidel: false, under: false });
@@ -115,6 +112,17 @@
 
       const addLog = (msg) => {
         setLogs(prev => [{ time: new Date().toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit', second:'2-digit'}), msg }, ...prev].slice(0, 100));
+      };
+
+      // --- Helpers ---
+      const renderPosDetails = (posState) => {
+        const res = denoms.filter(d => posState[d] > 0).map(d => `${d>=1?d:d*100+'ส'}x${posState[d]}`);
+        return res.length > 0 ? res.join(', ') : 'ไม่มีแบงก์/เหรียญ';
+      };
+
+      const renderTidelDetails = () => {
+        const res = tidelTubesConfig.filter(t => tidel[t.id] > 0).map(t => `ช.${t.id.split('_')[0].replace('t','')}x${tidel[t.id]}`);
+        return res.length > 0 ? res.join(', ') : 'ไม่มีหลอด';
       };
 
       // --- Image Download Handler ---
@@ -263,20 +271,29 @@
         }
       };
 
+      const handlePauseClick = () => {
+        setPreBreakTotal(grandTotal);
+        setIsPaused(true);
+      };
+
       const handleResumeBreak = () => {
-        const inAmt = parseFloat(pauseIn) || 0;
-        const outAmt = parseFloat(pauseOut) || 0;
-        const netAdj = inAmt - outAmt;
-        if (netAdj !== 0) {
-          setBreakAdjustments(p => p + netAdj);
-          addLog(`▶️ กลับจากพัก: บันทึกเงินเข้า +฿${inAmt}, เงินออก -฿${outAmt}`);
-        }
-        setPauseIn(''); setPauseOut(''); setIsPaused(false);
+        setIsPaused(false);
+        setIsPostBreak(true);
+        setActiveTab('count');
+        addLog('▶️ กลับจากพักเครื่อง เข้าสู่โหมดตรวจนับยอดหลังพัก');
+      };
+
+      const confirmPostBreakCount = () => {
+        const diff = grandTotal - preBreakTotal;
+        setBreakAdjustments(p => p + diff);
+        setIsPostBreak(false);
+        addLog(`✅ ยืนยันปรับปรุงยอดหลังพัก: ${diff >= 0 ? '+' : ''}฿${formatCurr(diff)}`);
+        alert(`บันทึกยอดช่วงพักสำเร็จ (${diff >= 0 ? '+' : ''}฿${formatCurr(diff)})`);
       };
 
       // --- Data Sync Handlers ---
       const exportData = () => {
-        const data = { pos1, pos2, tidel, underMachine, logs, baseline, salesTotal, depositTotal, breakAdjustments, movements, draftedTotal };
+        const data = { pos1, pos2, tidel, underMachine, logs, baseline, salesTotal, depositTotal, breakAdjustments, movements, draftedTotal, isPostBreak, preBreakTotal };
         const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a'); a.href = url; a.download = `POS_Backup_${new Date().toISOString().slice(0,10)}.json`; a.click();
@@ -299,6 +316,8 @@
             if(data.breakAdjustments !== undefined) setBreakAdjustments(data.breakAdjustments);
             if(data.movements) setMovements(data.movements);
             if(data.draftedTotal !== undefined) setDraftedTotal(data.draftedTotal);
+            if(data.isPostBreak !== undefined) setIsPostBreak(data.isPostBreak);
+            if(data.preBreakTotal !== undefined) setPreBreakTotal(data.preBreakTotal);
             alert('📥 นำเข้าข้อมูลและซิงค์สำเร็จ!'); addLog(`☁️ นำเข้าข้อมูลซิงค์ (Import) จากไฟล์`);
           } catch(err) { alert('ไฟล์ไม่ถูกต้อง'); }
         };
@@ -313,7 +332,7 @@
       const [exGetTube, setExGetTube] = useState('t1_20');
       const [exGetDenom, setExGetDenom] = useState(20);
       const [exGetQty, setExGetQty] = useState('');
-      const [exDest, setExDest] = useState('tidel'); // For transfer_out
+      const [exDest, setExDest] = useState('tidel'); 
       const [draftAmounts, setDraftAmounts] = useState({ 1000: '', 500: '', 100: '', 50: '', 20: '' });
 
       const executeExchange = () => {
@@ -331,7 +350,6 @@
            });
            if (hasError || totalTransfer === 0) return;
 
-           // Deduct from Source
            drawerSetter(p => {
              const next = { ...p };
              Object.entries(draftAmounts).forEach(([denom, qtyStr]) => {
@@ -339,7 +357,6 @@
              }); return next;
            });
            
-           // Add to Destination
            if (exDest === 'tidel') {
                setDraftedTotal(p => p + totalTransfer); 
                addLog(`🔽 ดราฟ Tidel จาก ${exPos.toUpperCase()}: ฿${formatCurr(totalTransfer)} (${transferDetails.join(', ')})`);
@@ -422,21 +439,12 @@
           <div className="flex flex-col h-screen w-full max-w-lg mx-auto bg-slate-900 shadow-xl overflow-hidden relative items-center justify-center p-6 text-white">
             <div className="text-6xl mb-4">⏸️</div>
             <h1 className="text-2xl font-bold mb-2">สถานะ: พักเครื่อง</h1>
-            <p className="text-slate-400 text-sm text-center mb-8">ขณะที่พัก หากมีเงินนำเข้า/นำออก กรุณาระบุเพื่อปรับปรุงยอด</p>
-            
-            <div className="w-full bg-slate-800 p-4 rounded-xl space-y-4 mb-8 border border-slate-700">
-              <div>
-                <label className="block text-emerald-400 font-bold mb-1">เงินเข้าลิ้นชัก (บาท)</label>
-                <input type="number" value={pauseIn} onChange={e=>setPauseIn(e.target.value)} onFocus={(e)=>e.target.select()} className="w-full bg-slate-900 border border-emerald-500/30 rounded-lg p-3 text-white text-lg font-bold outline-none focus:border-emerald-500" placeholder="0.00" />
-              </div>
-              <div>
-                <label className="block text-red-400 font-bold mb-1">เงินนำออก (บาท)</label>
-                <input type="number" value={pauseOut} onChange={e=>setPauseOut(e.target.value)} onFocus={(e)=>e.target.select()} className="w-full bg-slate-900 border border-red-500/30 rounded-lg p-3 text-white text-lg font-bold outline-none focus:border-red-500" placeholder="0.00" />
-              </div>
-            </div>
-
+            <p className="text-slate-400 text-sm text-center mb-8">
+              ขณะที่พักเครื่อง ยอดการรับ-ทอน จะถูกหยุดไว้ชั่วคราว<br/>
+              เมื่อพร้อมกลับมาทำงาน ให้กดปุ่มด้านล่างเพื่อทำการตรวจนับลิ้นชัก และหายอดที่เข้า/ออกระหว่างพักครับ
+            </p>
             <button onClick={handleResumeBreak} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl text-lg shadow-lg">
-              ▶️ กลับมาทำงาน
+              ▶️ กลับมาทำงาน (ตรวจนับยอดหลังพัก)
             </button>
           </div>
         );
@@ -452,7 +460,7 @@
               <p className="text-[10px] text-slate-300">ตัวช่วยจำเงินสด</p>
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={() => setIsPaused(true)} className="bg-slate-600 hover:bg-slate-500 px-3 py-1.5 rounded text-xs font-bold shadow border border-slate-500">⏸️ พักเครื่อง</button>
+              <button onClick={handlePauseClick} className="bg-slate-600 hover:bg-slate-500 px-3 py-1.5 rounded text-xs font-bold shadow border border-slate-500">⏸️ พักเครื่อง</button>
               <div className="text-right leading-tight">
                 <div className="text-[10px] text-slate-400">รวมทั้งร้าน</div>
                 <div className="font-bold text-lg text-emerald-400">฿{formatCurr(grandTotal)}</div>
@@ -513,7 +521,7 @@
                   </div>
                 </div>
 
-                {/* Denom Keyboard (ปรับขนาดเล็กลง h-14) */}
+                {/* Denom Keyboard */}
                 <div className="grid grid-cols-3 gap-2 flex-1 pb-2 content-start">
                   {denoms.map(d => {
                     const drawerData = activePos === 'pos1' ? pos1 : pos2;
@@ -532,6 +540,29 @@
             {activeTab === 'count' && (
               <div className="p-3 space-y-3">
                 
+                {isPostBreak && (
+                  <div className="bg-amber-100 border border-amber-300 rounded-lg p-3 shadow-sm mb-3">
+                    <div className="text-sm text-amber-800 font-bold mb-2 flex items-center gap-1">
+                      <span>⚠️</span> โหมดตรวจนับยอดหลังพัก (รับลูกค้าได้ปกติ)
+                    </div>
+                    <div className="flex justify-between text-xs text-amber-700 mb-1">
+                      <span>ยอดก่อนพักเครื่อง:</span> <span className="font-bold">฿{formatCurr(preBreakTotal)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-amber-700 mb-2">
+                      <span>นับได้ตอนนี้ (รวมดราฟ):</span> <span className="font-bold">฿{formatCurr(grandTotal)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm font-bold text-amber-900 mb-3 border-t border-amber-200 pt-2">
+                      <span>เงินส่วนต่างที่เข้า/ออก:</span> 
+                      <span className={(grandTotal - preBreakTotal) >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                        {(grandTotal - preBreakTotal) >= 0 ? '+' : ''}฿{formatCurr(grandTotal - preBreakTotal)}
+                      </span>
+                    </div>
+                    <button onClick={confirmPostBreakCount} className="w-full bg-amber-500 hover:bg-amber-600 text-white py-2 rounded-lg font-bold text-sm shadow">
+                      ✅ ยืนยันปรับปรุงยอดช่วงพัก
+                    </button>
+                  </div>
+                )}
+
                 <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 shadow-sm">
                   <div className="text-xs text-indigo-800 font-semibold mb-2">
                     💡 เริ่มนับจาก 0 ได้เลย หากระหว่างนับมีการกดรับ/ทอน แบงก์จะโชว์ยอดติดลบ และมี (เลขกำกับบิลล่าสุด) โชว์ไว้ช่วยจำ
@@ -682,7 +713,7 @@
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">2. เครื่องไหนเป็นคนทำรายการ?</label>
+                      <label className="block text-xs font-bold text-slate-500 mb-1">2. เครื่องไหนทำรายการ?</label>
                       <select value={exPos} onChange={e => setExPos(e.target.value)} className="w-full p-2 border border-slate-300 rounded-lg">
                         <option value="pos1">POS 1</option>
                         <option value="pos2">POS 2</option>
@@ -832,13 +863,21 @@
                       <div className="px-4 space-y-4">
                         
                         {/* Breakdown นับได้จริง */}
-                        <div className="space-y-2 mb-4">
+                        <div className="space-y-1 mb-4">
                           <div className="text-xs font-bold text-slate-500 border-b pb-1 mb-2">รายละเอียดเงินในระบบ (นับได้จริง)</div>
+                          
                           <div className="flex justify-between text-sm text-slate-700"><span>ลิ้นชัก POS 1:</span> <span className="font-semibold">฿{formatCurr(pos1Total)}</span></div>
+                          <div className="text-[10px] text-slate-500 text-right leading-tight mb-2">[{renderPosDetails(pos1)}]</div>
+                          
                           <div className="flex justify-between text-sm text-slate-700"><span>ลิ้นชัก POS 2:</span> <span className="font-semibold">฿{formatCurr(pos2Total)}</span></div>
+                          <div className="text-[10px] text-slate-500 text-right leading-tight mb-2">[{renderPosDetails(pos2)}]</div>
+                          
                           <div className="flex justify-between text-sm text-slate-700"><span>หลอด Tidel:</span> <span className="font-semibold">฿{formatCurr(tidelTotal)}</span></div>
-                          <div className="flex justify-between text-sm text-slate-700"><span>ใต้ลิ้นชัก (สำรอง):</span> <span className="font-semibold">฿{formatCurr(underTotal)}</span></div>
+                          <div className="text-[10px] text-slate-500 text-right leading-tight mb-2">[{renderTidelDetails()}]</div>
+                          
+                          <div className="flex justify-between text-sm text-slate-700 mt-2"><span>ใต้ลิ้นชัก (สำรอง):</span> <span className="font-semibold">฿{formatCurr(underTotal)}</span></div>
                           <div className="flex justify-between text-sm text-slate-700"><span>ยอดดราฟลงเซฟไปแล้ว:</span> <span className="font-semibold">฿{formatCurr(draftedTotal)}</span></div>
+                          
                           <div className="flex justify-between text-base font-bold border-t border-slate-200 pt-2 mt-2 text-blue-800">
                             <span>นับได้จริงทั้งหมด:</span>
                             <span>฿{formatCurr(grandTotal)}</span>
