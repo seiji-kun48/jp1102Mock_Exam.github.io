@@ -48,9 +48,10 @@
       }); 
       
       const [underMachine, setUnderMachine] = useState(''); 
+      const [draftedTotal, setDraftedTotal] = useState(0); // เก็บยอดเงินที่ถูกดราฟลงเซฟไปแล้ว
       const [logs, setLogs] = useState([]);
 
-      // --- Tracking Movements (นับยอดรับ/ทอนระหว่างยังไม่ได้ตั้งฐาน) ---
+      // --- Tracking Movements (นับยอดรับ/ทอนบิลล่าสุด) ---
       const [movements, setMovements] = useState({ pos1: {...defaultDrawer}, pos2: {...defaultDrawer} });
 
       const denoms = [1000, 500, 100, 50, 20, 10, 5, 2, 1, 0.5, 0.25];
@@ -105,7 +106,8 @@
       const tidelTotal = tidelTubesConfig.reduce((sum, tube) => sum + ((tidel[tube.id] || 0) * tube.val), 0);
       const underTotal = parseFloat(underMachine) || 0;
       
-      const grandTotal = pos1Total + pos2Total + tidelTotal + underTotal;
+      // รวมยอดทั้งหมด (ลิ้นชัก + Tidel + ใต้เครื่อง + ยอดที่ดราฟเข้าเซฟไปแล้ว)
+      const grandTotal = pos1Total + pos2Total + tidelTotal + underTotal + draftedTotal;
       const expectedTotal = (baseline || 0) + salesTotal + depositTotal + breakAdjustments;
       const variance = baseline !== null ? grandTotal - expectedTotal : 0;
 
@@ -116,6 +118,7 @@
       // --- Action Handlers ---
       const handleActionClick = (val) => {
         const isReceive = actionMode === 'receive';
+        const isNewTx = currentTx.receive === 0 && currentTx.change === 0;
         
         const updateFn = (prev) => {
           const currentQty = prev[val] || 0;
@@ -125,14 +128,17 @@
         if (activePos === 'pos1') setPos1(updateFn);
         else setPos2(updateFn);
 
-        // จดจำความเคลื่อนไหว
-        setMovements(prev => ({
-          ...prev,
-          [activePos]: {
-            ...prev[activePos],
-            [val]: prev[activePos][val] + (isReceive ? 1 : -1)
-          }
-        }));
+        // จดจำความเคลื่อนไหว (ถ้าเป็นบิลใหม่ ให้ล้างค่าเก่าทิ้งก่อน)
+        setMovements(prev => {
+          const baseMov = isNewTx ? { pos1: {...defaultDrawer}, pos2: {...defaultDrawer} } : { ...prev };
+          return {
+            ...baseMov,
+            [activePos]: {
+              ...baseMov[activePos],
+              [val]: baseMov[activePos][val] + (isReceive ? 1 : -1)
+            }
+          };
+        });
 
         setCurrentTx(prev => ({
           ...prev,
@@ -182,6 +188,7 @@
           const typeLabel = txType === 'sales' ? 'ยอดขาย' : 'ยอดฝาก';
           addLog(`✅ จบบิล (${typeLabel}): รับ ฿${currentTx.receive} [${rxDet||'-'}] | ทอน ฿${currentTx.change} [${chDet||'-'}]`);
         }
+        // สังเกตว่าเราไม่เคลียร์ movements ที่นี่ เพื่อให้ยังมองเห็นผลต่างจนกว่าจะกดเริ่มบิลใหม่
         setCurrentTx({ receive: 0, change: 0 });
         setCurrentTxDetails({ receive: {}, change: {} });
       };
@@ -194,7 +201,7 @@
 
       // --- Counting & Logging Handlers ---
       const handleCountChange = (pos, denom, newVal) => {
-        const val = parseInt(newVal) || 0; // ยอมให้กรอกติดลบได้
+        const val = parseInt(newVal) || 0; 
         const state = pos === 'pos1' ? pos1 : pos2;
         const setter = pos === 'pos1' ? setPos1 : setPos2;
         if (state[denom] !== val) {
@@ -243,7 +250,7 @@
 
       // --- Data Sync Handlers ---
       const exportData = () => {
-        const data = { pos1, pos2, tidel, underMachine, logs, baseline, salesTotal, depositTotal, breakAdjustments, movements };
+        const data = { pos1, pos2, tidel, underMachine, logs, baseline, salesTotal, depositTotal, breakAdjustments, movements, draftedTotal };
         const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a'); a.href = url; a.download = `POS_Backup_${new Date().toISOString().slice(0,10)}.json`; a.click();
@@ -265,6 +272,7 @@
             if(data.depositTotal !== undefined) setDepositTotal(data.depositTotal);
             if(data.breakAdjustments !== undefined) setBreakAdjustments(data.breakAdjustments);
             if(data.movements) setMovements(data.movements);
+            if(data.draftedTotal !== undefined) setDraftedTotal(data.draftedTotal);
             alert('📥 นำเข้าข้อมูลและซิงค์สำเร็จ!'); addLog(`☁️ นำเข้าข้อมูลซิงค์ (Import) จากไฟล์`);
           } catch(err) { alert('ไฟล์ไม่ถูกต้อง'); }
         };
@@ -302,6 +310,8 @@
                const qty = parseInt(qtyStr) || 0; if (qty > 0) next[denom] -= qty;
              }); return next;
            });
+           
+           setDraftedTotal(p => p + totalDraft); // บันทึกยอดดราฟเพื่อไม่ให้เงินหายไปจาก grandTotal
            addLog(`🔽 ดราฟ Tidel จาก ${exPos.toUpperCase()}: รวม ฿${formatCurr(totalDraft)} (${draftDetails.join(', ')})`);
            setDraftAmounts({ 1000: '', 500: '', 100: '', 50: '', 20: '' });
            alert('ดราฟเงินสำเร็จ!'); setActiveTab('count'); return;
@@ -366,11 +376,11 @@
             <div className="w-full bg-slate-800 p-4 rounded-xl space-y-4 mb-8 border border-slate-700">
               <div>
                 <label className="block text-emerald-400 font-bold mb-1">เงินเข้าลิ้นชัก (บาท)</label>
-                <input type="number" value={pauseIn} onChange={e=>setPauseIn(e.target.value)} className="w-full bg-slate-900 border border-emerald-500/30 rounded-lg p-3 text-white text-lg font-bold outline-none focus:border-emerald-500" placeholder="0.00" />
+                <input type="number" value={pauseIn} onChange={e=>setPauseIn(e.target.value)} onFocus={(e)=>e.target.select()} className="w-full bg-slate-900 border border-emerald-500/30 rounded-lg p-3 text-white text-lg font-bold outline-none focus:border-emerald-500" placeholder="0.00" />
               </div>
               <div>
                 <label className="block text-red-400 font-bold mb-1">เงินนำออก (บาท)</label>
-                <input type="number" value={pauseOut} onChange={e=>setPauseOut(e.target.value)} className="w-full bg-slate-900 border border-red-500/30 rounded-lg p-3 text-white text-lg font-bold outline-none focus:border-red-500" placeholder="0.00" />
+                <input type="number" value={pauseOut} onChange={e=>setPauseOut(e.target.value)} onFocus={(e)=>e.target.select()} className="w-full bg-slate-900 border border-red-500/30 rounded-lg p-3 text-white text-lg font-bold outline-none focus:border-red-500" placeholder="0.00" />
               </div>
             </div>
 
@@ -452,7 +462,7 @@
                   </div>
                 </div>
 
-                {/* Denom Keyboard (ปรับขนาดเล็กลง h-14) */}
+                {/* Denom Keyboard */}
                 <div className="grid grid-cols-3 gap-2 flex-1 pb-2 content-start">
                   {denoms.map(d => {
                     const drawerData = activePos === 'pos1' ? pos1 : pos2;
@@ -473,13 +483,13 @@
                 
                 <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 shadow-sm">
                   <div className="text-xs text-indigo-800 font-semibold mb-2">
-                    💡 เริ่มยอดจาก 0 ได้เลย หากระหว่างนับมีการรับ/ทอน แบงก์จะติดลบ และมีตัวเลขสะสมกำกับไว้ (ล้างยอดสะสมเมื่อตั้งฐาน)
+                    💡 เริ่มนับจาก 0 ได้เลย หากระหว่างนับมีการกดรับ/ทอน แบงก์จะโชว์ยอดติดลบ และมี (เลขกำกับบิลล่าสุด) โชว์ไว้ช่วยจำ
                   </div>
                   <button onClick={() => {
                     if(window.confirm(`ยืนยันการตั้งยอดปัจจุบัน (฿${formatCurr(grandTotal)}) เป็นยอดอ้างอิงหรือไม่? \n(ยอดรับ/ฝาก และเงินปรับปรุงพักเครื่อง จะถูกรีเซ็ตเป็น 0)`)){
                       setBaseline(grandTotal);
                       setSalesTotal(0); setDepositTotal(0); setBreakAdjustments(0);
-                      setMovements({ pos1: {...defaultDrawer}, pos2: {...defaultDrawer} }); // เคลียร์ยอด movement
+                      setMovements({ pos1: {...defaultDrawer}, pos2: {...defaultDrawer} }); 
                       addLog(`📌 ตั้งยอดปัจจุบัน (฿${formatCurr(grandTotal)}) เป็นยอดอ้างอิงใหม่`);
                     }
                   }} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg font-bold text-sm shadow">
@@ -511,7 +521,7 @@
                             <input type="number" 
                               value={pos1[d] === 0 ? '0' : pos1[d]} 
                               onChange={(e) => setPos1(p => ({...p, [d]: e.target.value === '' ? 0 : parseInt(e.target.value)}))} 
-                              onFocus={() => setFocusValTracker(pos1[d])}
+                              onFocus={(e) => { e.target.select(); setFocusValTracker(pos1[d]); }}
                               onBlur={(e) => handleInputBlur('pos1', d, e.target.value)}
                               className="w-10 text-center font-bold outline-none text-sm" placeholder="0" />
                             <button onClick={() => handleCountChange('pos1', d, (pos1[d]||0)+1)} className="w-7 h-7 bg-slate-200 rounded text-emerald-600 font-bold">+</button>
@@ -546,7 +556,7 @@
                             <input type="number" 
                               value={pos2[d] === 0 ? '0' : pos2[d]} 
                               onChange={(e) => setPos2(p => ({...p, [d]: e.target.value === '' ? 0 : parseInt(e.target.value)}))} 
-                              onFocus={() => setFocusValTracker(pos2[d])}
+                              onFocus={(e) => { e.target.select(); setFocusValTracker(pos2[d]); }}
                               onBlur={(e) => handleInputBlur('pos2', d, e.target.value)}
                               className="w-10 text-center font-bold outline-none text-sm" placeholder="0" />
                             <button onClick={() => handleCountChange('pos2', d, (pos2[d]||0)+1)} className="w-7 h-7 bg-slate-200 rounded text-emerald-600 font-bold">+</button>
@@ -571,7 +581,7 @@
                           <input type="number" 
                             value={tidel[tube.id] === 0 ? '' : tidel[tube.id]} 
                             onChange={e => setTidel(p => ({...p, [tube.id]: parseInt(e.target.value)||0}))} 
-                            onFocus={() => setFocusValTracker(tidel[tube.id])}
+                            onFocus={(e) => { e.target.select(); setFocusValTracker(tidel[tube.id]); }}
                             onBlur={(e) => handleTidelBlur(tube.id, tube.label, e.target.value)}
                             className="w-12 text-center border border-slate-300 rounded font-bold text-sm" placeholder="0" />
                         </div>
@@ -592,7 +602,7 @@
                       <input type="number" 
                         value={underMachine} 
                         onChange={e => setUnderMachine(e.target.value)} 
-                        onFocus={() => setFocusValTracker(underMachine)}
+                        onFocus={(e) => { e.target.select(); setFocusValTracker(underMachine); }}
                         onBlur={(e) => handleUnderBlur(e.target.value)}
                         className="w-full text-right font-bold text-2xl border-b-2 border-slate-300 focus:border-amber-500 outline-none p-2 bg-transparent" placeholder="0.00" />
                     </div>
@@ -641,7 +651,7 @@
                             </div>
                             <div className="w-24">
                               <label className="block text-[10px] font-bold text-slate-500">จำนวน (ใบ)</label>
-                              <input type="number" value={exPayQty} onChange={e => setExPayQty(e.target.value)} className="w-full p-2 border rounded text-center" placeholder="0" />
+                              <input type="number" value={exPayQty} onChange={e => setExPayQty(e.target.value)} onFocus={e=>e.target.select()} className="w-full p-2 border rounded text-center" placeholder="0" />
                             </div>
                           </div>
                         )}
@@ -655,7 +665,7 @@
                           </div>
                           <div className="w-24">
                             <label className="block text-[10px] font-bold text-slate-500">จำนวน (หลอด)</label>
-                            <input type="number" value={exGetQty} onChange={e => setExGetQty(e.target.value)} className="w-full p-2 border rounded text-center" placeholder="0" />
+                            <input type="number" value={exGetQty} onChange={e => setExGetQty(e.target.value)} onFocus={e=>e.target.select()} className="w-full p-2 border rounded text-center" placeholder="0" />
                           </div>
                         </div>
                       </div>
@@ -672,7 +682,7 @@
                               {denoms.map(d => <option key={d} value={d}>{d >= 1 ? `แบงก์/เหรียญ ${d}` : `${d*100} สต.`}</option>)}
                             </select>
                           </div>
-                          <div className="w-24"><label className="block text-[10px] font-bold text-slate-500">จำนวน (ใบ/ชิ้น)</label><input type="number" value={exGetQty} onChange={e => setExGetQty(e.target.value)} className="w-full p-2 border rounded text-center" placeholder="0" /></div>
+                          <div className="w-24"><label className="block text-[10px] font-bold text-slate-500">จำนวน (ใบ/ชิ้น)</label><input type="number" value={exGetQty} onChange={e => setExGetQty(e.target.value)} onFocus={e=>e.target.select()} className="w-full p-2 border rounded text-center" placeholder="0" /></div>
                         </div>
                       </div>
                     )}
@@ -687,7 +697,7 @@
                               <option value="1000">1000 บาท</option><option value="500">500 บาท</option><option value="100">100 บาท</option>
                             </select>
                           </div>
-                          <div className="w-24"><label className="block text-[10px] font-bold text-slate-500">จำนวน (ใบ)</label><input type="number" value={exPayQty} onChange={e => setExPayQty(e.target.value)} className="w-full p-2 border rounded text-center" placeholder="0" /></div>
+                          <div className="w-24"><label className="block text-[10px] font-bold text-slate-500">จำนวน (ใบ)</label><input type="number" value={exPayQty} onChange={e => setExPayQty(e.target.value)} onFocus={e=>e.target.select()} className="w-full p-2 border rounded text-center" placeholder="0" /></div>
                         </div>
                         <div className="flex gap-2">
                           <div className="flex-1">
@@ -696,7 +706,7 @@
                               {denoms.filter(d=>d<=100).map(d => <option key={d} value={d}>{d >= 1 ? `แบงก์/เหรียญ ${d}` : `${d*100} สต.`}</option>)}
                             </select>
                           </div>
-                          <div className="w-24"><label className="block text-[10px] font-bold text-slate-500">จำนวน (ชิ้น)</label><input type="number" value={exGetQty} onChange={e => setExGetQty(e.target.value)} className="w-full p-2 border rounded text-center" placeholder="0" /></div>
+                          <div className="w-24"><label className="block text-[10px] font-bold text-slate-500">จำนวน (ชิ้น)</label><input type="number" value={exGetQty} onChange={e => setExGetQty(e.target.value)} onFocus={e=>e.target.select()} className="w-full p-2 border rounded text-center" placeholder="0" /></div>
                         </div>
                       </div>
                     )}
@@ -709,7 +719,7 @@
                            <div key={`draft-${d}`} className="flex justify-between items-center border-b border-slate-200 pb-1">
                              <label className="text-sm font-bold text-slate-600">แบงก์ {d}</label>
                              <div className="flex items-center gap-2">
-                               <input type="number" value={draftAmounts[d]} onChange={(e) => setDraftAmounts(p => ({...p, [d]: e.target.value}))} className="w-20 p-1 border border-slate-300 rounded text-center font-bold" placeholder="จำนวนใบ" />
+                               <input type="number" value={draftAmounts[d]} onChange={(e) => setDraftAmounts(p => ({...p, [d]: e.target.value}))} onFocus={e=>e.target.select()} className="w-20 p-1 border border-slate-300 rounded text-center font-bold" placeholder="จำนวนใบ" />
                              </div>
                            </div>
                          ))}
@@ -785,10 +795,11 @@
                       </div>
 
                       {/* Actual Comparison */}
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
                         <div className="flex-1 bg-blue-50 border border-blue-200 p-3 rounded-lg text-center">
-                          <div className="text-xs font-bold text-slate-500 mb-1">นับได้จริงตอนนี้</div>
+                          <div className="text-xs font-bold text-slate-500 mb-1">นับได้จริงทั้งหมด</div>
                           <div className="text-xl font-bold text-blue-700">฿{formatCurr(grandTotal)}</div>
+                          {draftedTotal > 0 && <div className="text-[10px] text-slate-500 mt-1">(รวมดราฟเซฟ ฿{formatCurr(draftedTotal)})</div>}
                         </div>
                       </div>
 
@@ -846,7 +857,7 @@
                     setTidel({ t1_20:0, t2_20:0, t3_20:0, t4_100:0, t5_100:0, t6_100:0, t7_100:0, t8_100:0 }); 
                     setUnderMachine(''); setLogs([]); setCurrentTx({receive:0,change:0}); setCurrentTxDetails({receive:{},change:{}});
                     setBaseline(null); setSalesTotal(0); setDepositTotal(0); setBreakAdjustments(0);
-                    setMovements({ pos1: {...defaultDrawer}, pos2: {...defaultDrawer} });
+                    setMovements({ pos1: {...defaultDrawer}, pos2: {...defaultDrawer} }); setDraftedTotal(0);
                     alert('ล้างข้อมูลเรียบร้อยแล้ว');
                   }
                 }} className="w-full py-4 text-red-500 font-bold bg-white border border-red-200 rounded-xl shadow-sm">
