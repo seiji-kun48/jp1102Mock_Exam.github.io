@@ -49,7 +49,42 @@
       const [draftedTotal, setDraftedTotal] = useState(0); 
       const [logs, setLogs] = useState([]);
       const [movements, setMovements] = useState({ pos1: {...defaultDrawer}, pos2: {...defaultDrawer} });
+      // [ใหม่] 1. โหลดข้อมูลจาก Local Storage ตอนเปิดเว็บ
+      useEffect(() => {
+        const savedData = localStorage.getItem('pos_backup_data');
+        if (savedData) {
+          try {
+            const data = JSON.parse(savedData);
+            if(data.pos1) setPos1(data.pos1); if(data.pos2) setPos2(data.pos2);
+            if(data.pos1Stash) setPos1Stash(data.pos1Stash); if(data.pos2Stash) setPos2Stash(data.pos2Stash);
+            if(data.tidel) setTidel(data.tidel); if(data.underMachine !== undefined) setUnderMachine(data.underMachine);
+            if(data.variances) setVariances(data.variances);
+            if(data.logs) setLogs(data.logs); if(data.baseline !== undefined) setBaseline(data.baseline);
+            if(data.salesTotal !== undefined) setSalesTotal(data.salesTotal);
+            if(data.depositTotal !== undefined) setDepositTotal(data.depositTotal);
+            if(data.breakAdjustments !== undefined) setBreakAdjustments(data.breakAdjustments);
+            if(data.rushHourSales !== undefined) setRushHourSales(data.rushHourSales);
+            if(data.movements) setMovements(data.movements); if(data.draftedTotal !== undefined) setDraftedTotal(data.draftedTotal);
+            if(data.isPostBreak !== undefined) setIsPostBreak(data.isPostBreak);
+            if(data.preBreakTotal !== undefined) setPreBreakTotal(data.preBreakTotal);
+            if(data.isPostRush !== undefined) setIsPostRush(data.isPostRush);
+            if(data.preRushTotal !== undefined) setPreRushTotal(data.preRushTotal);
+          } catch(err) {
+            console.error("Failed to load local storage data", err);
+          }
+        }
+      }, []);
 
+      // [ใหม่] 2. บันทึกข้อมูลลง Local Storage อัตโนมัติเมื่อ State เปลี่ยน
+      useEffect(() => {
+        const dataToSave = {
+          pos1, pos2, pos1Stash, pos2Stash, tidel, underMachine, logs,
+          baseline, salesTotal, depositTotal, breakAdjustments, rushHourSales,
+          movements, draftedTotal, isPostBreak, preBreakTotal, isPostRush, preRushTotal, variances
+        };
+        localStorage.setItem('pos_backup_data', JSON.stringify(dataToSave));
+      }, [pos1, pos2, pos1Stash, pos2Stash, tidel, underMachine, logs, baseline, salesTotal, depositTotal, breakAdjustments, rushHourSales, movements, draftedTotal, isPostBreak, preBreakTotal, isPostRush, preRushTotal, variances]);
+      
       const defaultVariances = { pos1: {...defaultDrawer}, pos2: {...defaultDrawer}, tidel: {...defaultTidel}, under: 0 };
       const [variances, setVariances] = useState(defaultVariances);
 
@@ -71,6 +106,8 @@
       const [salesTotal, setSalesTotal] = useState(0);
       const [depositTotal, setDepositTotal] = useState(0);
       const [breakAdjustments, setBreakAdjustments] = useState(0); 
+      // [ใหม่] เพิ่มตัวแปรเก็บยอดช่วง Rush Hour
+      const [rushHourSales, setRushHourSales] = useState(0);
 
       const [actionMode, setActionMode] = useState('receive'); 
       const [txType, setTxType] = useState('sales'); 
@@ -80,6 +117,11 @@
       const [isPaused, setIsPaused] = useState(false);
       const [isPostBreak, setIsPostBreak] = useState(false); 
       const [preBreakTotal, setPreBreakTotal] = useState(0); 
+
+      // [ใหม่] ตัวแปรควบคุมหน้าจอ Rush Hour
+      const [isRushHour, setIsRushHour] = useState(false);
+      const [isPostRush, setIsPostRush] = useState(false);
+      const [preRushTotal, setPreRushTotal] = useState(0);
 
       const [countSections, setCountSections] = useState({ pos1: true, pos2: false, tidel: false, under: false });
       const [focusValTracker, setFocusValTracker] = useState(0); 
@@ -116,8 +158,6 @@
       const [isLogSelectMode, setIsLogSelectMode] = useState(false);
       const [selectedLogIds, setSelectedLogIds] = useState(new Set());
       const [printViewData, setPrintViewData] = useState(null);
-      const [logFilterStart, setLogFilterStart] = useState('');
-      const [logFilterEnd, setLogFilterEnd] = useState('');
 
       const [currentTime, setCurrentTime] = useState(new Date());
       useEffect(() => {
@@ -127,7 +167,8 @@
 
       const calcTotal = (obj) => Object.entries(obj).reduce((sum, [val, qty]) => sum + (parseFloat(val) * (qty||0)), 0);
       const formatCurr = (amt) => new Intl.NumberFormat('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(amt);
-      // [เพิ่มฟังก์ชันนี้] เพื่อแปลงข้อความธรรมดา ให้กลับมามีสีสัน (เขียว/แดง/น้ำเงิน/ส้ม)
+      
+      // ฟังก์ชันนักระบายสีสำหรับประวัติ
       const formatLogDetail = (text) => {
         if (typeof text !== 'string') return text;
         const parts = text.split(/(\([+-][0-9.,]+\)|\[ส:[+-][0-9.,]+\])/g);
@@ -140,10 +181,9 @@
              const isPos = part.includes('+');
              return <span key={i} className={`font-bold ml-1 ${isPos ? 'text-blue-500' : 'text-orange-500'}`}>{part}</span>;
           }
-          return part; // ข้อความปกติไม่ต้องใส่สี
+          return part; 
         });
       };
-      
       
       const renderTxDetails = (detailsObj) => {
         if (!detailsObj || Object.keys(detailsObj).length === 0) return '';
@@ -159,7 +199,8 @@
       const underTotal = parseFloat(underMachine) || 0;
       
       const grandTotal = pos1Total + pos2Total + tidelTotal + underTotal + draftedTotal;
-      const expectedTotal = (baseline || 0) + salesTotal + depositTotal + breakAdjustments;
+      // [อัปเดต] นำยอด Rush Hour มาคำนวณในเป้าหมายระบบ
+      const expectedTotal = (baseline || 0) + salesTotal + depositTotal + breakAdjustments + rushHourSales;
       const variance = baseline !== null ? grandTotal - expectedTotal : 0;
 
       const [showVarAlert, setShowVarAlert] = useState(null);
@@ -215,7 +256,6 @@
         setLogs(prev => prev.map(l => l.id === id ? { ...l, isOpen: !l.isOpen } : l));
       };
 
-      // ฟังก์ชันสำหรับหน้า UI (มีสีสัน JSX)
       const renderPosJSX = (loose, stash, vObj, deltaObj) => {
         const items = denoms.map(d => {
           const l = loose[d] || 0; const s = stash[d] || 0; const v = vObj[d] || 0; const delta = deltaObj[d] || 0;
@@ -245,7 +285,6 @@
         return items.reduce((prev, curr, i) => [prev, <span key={'c'+i}>, </span>, curr]);
       };
 
-      // ฟังก์ชันสำหรับเก็บประวัติ (แบบข้อความล้วน)
       const renderPosString = (loose, stash, vObj, deltaObj) => {
         const items = denoms.map(d => {
           const l = loose[d] || 0; const s = stash[d] || 0; const v = vObj[d] || 0; const delta = deltaObj[d] || 0;
@@ -301,7 +340,6 @@
           const tP1 = calcTotal(p1) + calcTotal(p1S); const tP2 = calcTotal(p2) + calcTotal(p2S);
           const tTi = tidelTubesConfig.reduce((sum, t) => sum + ((ti[t.id]||0)*t.val), 0); const tUn = parseFloat(un) || 0;
 
-          // ส่งออกเป็นข้อความล้วน ป้องกันบัค Import/Export
           return [
              `💻 POS1: ฿${formatCurr(tP1)} [${renderPosString(p1, p1S, vP1, deltaP1)}]`,
              `💻 POS2: ฿${formatCurr(tP2)} [${renderPosString(p2, p2S, vP2, deltaP2)}]`,
@@ -352,6 +390,7 @@
          const drawerSetter = activePos === 'pos1' ? setPos1 : setPos2;
          
          const nextState = { ...drawerState, [denom]: drawerState[denom] + (isReceive ? -targetQty : targetQty) };
+         const overrides = activePos === 'pos1' ? { pos1: nextState } : { pos2: nextState };
 
          drawerSetter(nextState);
          setMovements(prev => ({ ...prev, [activePos]: { ...prev[activePos], [denom]: prev[activePos][denom] + (isReceive ? -targetQty : targetQty) } }));
@@ -361,19 +400,24 @@
          
          setCurrentTxDetails(prev => { const nextModeObj = { ...prev[actionMode] }; delete nextModeObj[denom]; return { ...prev, [actionMode]: nextModeObj }; });
          
-         // [แก้ไข] ลบการเตือนออก และสั่งปิด Popup
+         const diffVal = (targetQty * denom) * (isReceive ? -1 : 1);
+         const nextVar = variance + diffVal; 
+         const explicitDeltas = { [activePos]: { [denom]: (isReceive ? -targetQty : targetQty) } };
+         addLog(`♻️ ยกเลิกปุ่ม ${denom} (เฉพาะโหมด${isReceive ? 'รับเงิน' : 'หยิบทอน'})`, diffVal, [
+             `คืนเก๊ะ: POS ${activePos === 'pos1' ? '1' : '2'}`,
+             ...getFullStatusDetails(overrides, explicitDeltas)
+         ], nextVar, `RESET_${activePos}_${denom}`);
          setShowLongPressMenu(false);
       };
 
       const applyDenomQty = (denom, newQty) => {
          const isReceive = actionMode === 'receive'; const currentQty = currentTxDetails[actionMode][denom] || 0;
-         const diff = newQty - currentQty; 
-         // [แก้ไข] ถ้าตัวเลขไม่เปลี่ยน ให้ปิด popup เลย
-         if (diff === 0) return setShowLongPressMenu(false); 
+         const diff = newQty - currentQty; if (diff === 0) return;
          
          const drawerState = activePos === 'pos1' ? pos1 : pos2;
          const drawerSetter = activePos === 'pos1' ? setPos1 : setPos2;
          const nextState = { ...drawerState, [denom]: drawerState[denom] + (isReceive ? diff : -diff) };
+         const overrides = activePos === 'pos1' ? { pos1: nextState } : { pos2: nextState };
 
          drawerSetter(nextState);
          
@@ -384,8 +428,13 @@
          setCurrentTx(prev => ({ ...prev, [actionMode]: prev[actionMode] + (diff * denom) }));
          setCurrentTxDetails(prev => ({ ...prev, [actionMode]: { ...prev[actionMode], [denom]: newQty } }));
          
-         // [แก้ไข] ลบการเตือนออก และสั่งปิด Popup ทันทีที่กดยืนยัน
-         setShowLongPressMenu(false); 
+         const diffVal = diff * denom * (isReceive ? 1 : -1);
+         const nextVar = variance + diffVal;
+         const explicitDeltas = { [activePos]: { [denom]: (isReceive ? diff : -diff) } };
+         addLog(`⌨️ พิมพ์ระบุจำนวนแบงก์/เหรียญ ${denom}`, diffVal, [
+             `แก้ไขจำนวนในช่อง: ${isReceive ? 'รับเงิน' : 'หยิบทอน'}`, 
+             ...getFullStatusDetails(overrides, explicitDeltas)
+         ], nextVar, `INPUT_${activePos}_${denom}`);
       };
 
       const handleActionClick = (val) => {
@@ -547,8 +596,20 @@
           alert(`บันทึกยอดช่วงพักสำเร็จ (${diff >= 0 ? '+' : ''}฿${formatCurr(diff)})`); 
       };
 
+      // [ฟังก์ชันใหม่] จัดการปุ่ม Rush Hour
+      const handleRushClick = () => { setPreRushTotal(grandTotal); setIsRushHour(true); };
+      const handleResumeRush = () => { setIsRushHour(false); setIsPostRush(true); setActiveTab('count'); addLog('▶️ จบโหมดเร่งด่วน เตรียมตรวจนับยอดขาย', 0, getFullStatusDetails()); };
+      const confirmPostRushCount = () => {
+          const diff = grandTotal - preRushTotal;
+          setRushHourSales(p => p + diff);
+          setIsPostRush(false);
+          const nextTotalVar = variance - diff;
+          addLog(`✅ ยืนยันยอดขายช่วงเร่งด่วน (Rush Hour)`, diff, [`ยอดก่อนเริ่ม: ฿${formatCurr(preRushTotal)}`, `นับได้หลังจบ: ฿${formatCurr(grandTotal)}`, ...getFullStatusDetails()], nextTotalVar);
+          alert(`บันทึกยอดช่วงเร่งด่วนสำเร็จ (${diff >= 0 ? '+' : ''}฿${formatCurr(diff)})`);
+      };
+
       const exportData = () => {
-        const data = { pos1, pos2, pos1Stash, pos2Stash, tidel, underMachine, logs, baseline, salesTotal, depositTotal, breakAdjustments, movements, draftedTotal, isPostBreak, preBreakTotal, variances };
+        const data = { pos1, pos2, pos1Stash, pos2Stash, tidel, underMachine, logs, baseline, salesTotal, depositTotal, breakAdjustments, rushHourSales, movements, draftedTotal, isPostBreak, preBreakTotal, isPostRush, preRushTotal, variances };
         const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); 
         const a = document.createElement('a'); 
         a.href = URL.createObjectURL(blob); 
@@ -579,13 +640,13 @@
             if(data.variances) setVariances(data.variances);
             if(data.logs) setLogs(data.logs); if(data.baseline !== undefined) setBaseline(data.baseline); if(data.salesTotal !== undefined) setSalesTotal(data.salesTotal);
             if(data.depositTotal !== undefined) setDepositTotal(data.depositTotal); if(data.breakAdjustments !== undefined) setBreakAdjustments(data.breakAdjustments);
+            if(data.rushHourSales !== undefined) setRushHourSales(data.rushHourSales);
             if(data.movements) setMovements(data.movements); if(data.draftedTotal !== undefined) setDraftedTotal(data.draftedTotal);
             alert('📥 นำเข้าข้อมูลและซิงค์สำเร็จ!'); addLog(`☁️ นำเข้าข้อมูลซิงค์ (Import)`, 0, getFullStatusDetails(data));
           } catch(err) { alert('ไฟล์ไม่ถูกต้อง'); }
         }; reader.readAsText(file);
       };
 
-      // ฟังก์ชันสำหรับวาดปุ่ม บวกลบ ในหน้าโอนแลก
       const renderQtyInput = (value, onChange, placeholder = "0") => {
         const numVal = parseInt(value) || 0;
         return (
@@ -820,10 +881,21 @@
           </div>
         );
       }
+
+      // [UI ใหม่] หน้าจอ Rush Hour
+      if (isRushHour) {
+        return (
+          <div className="flex flex-col h-screen w-full max-w-lg mx-auto bg-amber-500 shadow-xl overflow-hidden relative items-center justify-center p-6 text-white">
+            <div className="text-6xl mb-4">⚡</div><h1 className="text-2xl font-bold mb-2">โหมดเร่งด่วน (Rush Hour)</h1>
+            <p className="text-amber-100 text-sm text-center mb-8">ขณะนี้ลูกค้ารุม! ให้โฟกัสที่การคิดเงินหน้า POS หลัก<br/>เมื่อลูกค้าซาแล้ว ค่อยมากดนับยอดทีเดียวครับ</p>
+            <button onClick={handleResumeRush} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 rounded-xl text-lg shadow-lg">✅ จบโหมดเร่งด่วน (ตรวจนับยอด)</button>
+          </div>
+        );
+      }
+
       if (printViewData) {
         return (
           <>
-            {/* [สำคัญ] บังคับให้เบราว์เซอร์ปลดล็อคความสูงหน้าจอตอนสั่งปริ้นท์ ข้อมูลจะได้ไม่โดนตัด */}
             <style>{`
               @media print {
                 html, body, #root { 
@@ -881,8 +953,8 @@
                                     {l.details.map((dt, idx) => (
                                        <div key={idx} className="border-b border-slate-100 pb-1.5 last:border-0 last:pb-0">
                                           {typeof dt === 'object' && dt !== null && !React.isValidElement(dt) 
-  ? <span className="text-orange-500 font-bold italic">⚠️ [ประวัติเก่าที่รวมยอดแล้ว]</span> 
-  : formatLogDetail(dt)}
+                                            ? <span className="text-orange-500 font-bold italic">⚠️ [ประวัติเก่าที่รวมยอดแล้ว]</span> 
+                                            : formatLogDetail(dt)}
                                        </div>
                                     ))}
                                 </div>
@@ -926,9 +998,10 @@
 
           <div className="bg-slate-800 text-white p-3 flex justify-between items-center z-10 shrink-0">
             <div><h1 className="font-bold text-lg">💰 POS Manager</h1><p className="text-[10px] text-slate-300">ตัวช่วยจำเงินสด</p></div>
-            <div className="flex items-center gap-3">
-              <button onClick={handlePauseClick} className="bg-slate-600 hover:bg-slate-500 px-3 py-1.5 rounded text-xs font-bold shadow border border-slate-500">⏸️ พักเครื่อง</button>
-              <div className="text-right leading-tight"><div className="text-[10px] text-slate-400">รวมทั้งร้าน</div><div className="font-bold text-lg text-emerald-400">฿{formatCurr(grandTotal)}</div></div>
+            <div className="flex items-center gap-2">
+              <button onClick={handleRushClick} className="bg-amber-600 hover:bg-amber-500 px-2 py-1.5 rounded text-xs font-bold shadow border border-amber-600">⚡ Rush</button>
+              <button onClick={handlePauseClick} className="bg-slate-600 hover:bg-slate-500 px-2 py-1.5 rounded text-xs font-bold shadow border border-slate-500">⏸️ พัก</button>
+              <div className="text-right leading-tight ml-1"><div className="text-[10px] text-slate-400">รวมทั้งร้าน</div><div className="font-bold text-lg text-emerald-400">฿{formatCurr(grandTotal)}</div></div>
             </div>
           </div>
 
@@ -995,13 +1068,26 @@
                   </div>
                 )}
 
+                {/* [UI ใหม่] แบนเนอร์จบรอบ Rush Hour */}
+                {isPostRush && (
+                  <div className="bg-blue-100 border border-blue-300 rounded-lg p-3 shadow-sm mb-3">
+                    <div className="text-sm text-blue-800 font-bold mb-2 flex items-center gap-1"><span>⚡</span> อัปเดตยอดขายช่วง Rush Hour</div>
+                    <div className="flex justify-between text-xs text-blue-700 mb-1"><span>ยอดก่อน Rush Hour:</span> <span className="font-bold">฿{formatCurr(preRushTotal)}</span></div>
+                    <div className="flex justify-between text-xs text-blue-700 mb-2"><span>นับได้ตอนนี้ (รวมดราฟ):</span> <span className="font-bold">฿{formatCurr(grandTotal)}</span></div>
+                    <div className="flex justify-between text-sm font-bold text-blue-900 mb-3 border-t border-blue-200 pt-2">
+                      <span>ยอดขายที่ทำได้ช่วงนี้:</span> <span className={(grandTotal - preRushTotal) >= 0 ? 'text-emerald-600' : 'text-red-600'}>{(grandTotal - preRushTotal) >= 0 ? '+' : ''}฿{formatCurr(grandTotal - preRushTotal)}</span>
+                    </div>
+                    <button onClick={confirmPostRushCount} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-bold text-sm shadow">✅ ยืนยันเพิ่มเป็นยอดขาย</button>
+                  </div>
+                )}
+
                 <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 shadow-sm">
                   <div className="text-xs text-indigo-800 font-semibold mb-2">💡 เริ่มนับจาก 0 ได้เลย หากระหว่างนับมีการกดรับ/ทอน แบงก์จะโชว์ยอดติดลบ และมี (เลขกำกับบิลล่าสุด) โชว์ไว้ช่วยจำ</div>
                   <button onClick={() => {
                     if(window.confirm(`ยืนยันการตั้งยอดปัจจุบัน (฿${formatCurr(grandTotal)}) เป็นยอดอ้างอิงหรือไม่? \n(ยอดรับ/ฝาก และเงินปรับปรุงพักเครื่อง จะถูกรีเซ็ตเป็น 0)`)){
                       addLog(`📌 ตั้งยอดอ้างอิงเริ่มต้นใหม่`, 0, [`ยอดอ้างอิงใหม่: ฿${formatCurr(grandTotal)}`, ...getFullStatusDetails(), `ล้างยอดขายและปรับปรุงพักเครื่องเป็น 0`], 0);
                       setVariances(defaultVariances); 
-                      setBaseline(grandTotal); setSalesTotal(0); setDepositTotal(0); setBreakAdjustments(0); setMovements({ pos1: {...defaultDrawer}, pos2: {...defaultDrawer} }); 
+                      setBaseline(grandTotal); setSalesTotal(0); setDepositTotal(0); setBreakAdjustments(0); setRushHourSales(0); setMovements({ pos1: {...defaultDrawer}, pos2: {...defaultDrawer} }); 
                     }
                   }} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg font-bold text-sm shadow">📌 ตั้งยอดทั้งหมดปัจจุบันเป็น 'ฐานอ้างอิง'</button>
                 </div>
@@ -1422,6 +1508,7 @@
                           <div className="flex justify-between items-center text-sm"><span className="text-emerald-600">+ ยอดขาย (รับ-ทอน):</span><span className="font-semibold text-emerald-700">฿{formatCurr(salesTotal)}</span></div>
                           <div className="flex justify-between items-center text-sm"><span className="text-emerald-600">+ ยอดฝากเงิน (รับ-ทอน):</span><span className="font-semibold text-emerald-700">฿{formatCurr(depositTotal)}</span></div>
                           <div className="flex justify-between items-center text-sm"><span className="text-amber-600">{breakAdjustments >= 0 ? '+' : '-'} เงินเข้า/ออกตอนพักเครื่อง:</span><span className="font-semibold text-amber-700">฿{formatCurr(breakAdjustments)}</span></div>
+                          <div className="flex justify-between items-center text-sm"><span className="text-emerald-600">+ ยอดขายช่วงเร่งด่วน:</span><span className="font-semibold text-emerald-700">฿{formatCurr(rushHourSales)}</span></div>
                           <div className="flex justify-between items-center text-base font-bold border-t border-slate-300 pt-2 mt-2"><span className="text-slate-800">เป้าหมายระบบ (ควรมี):</span><span className="text-blue-700">฿{formatCurr(expectedTotal)}</span></div>
                         </div>
 
@@ -1455,7 +1542,6 @@
                        </div>
                     </div>
                     
-                    {/* [ระบบใหม่]: ปุ่มคลุมดำ */}
                     {isLogSelectMode && (
                         <div className="flex flex-wrap gap-2 mb-2 p-2 bg-slate-100/80 rounded-lg border border-slate-200 items-center">
                             <button onClick={() => setSelectedLogIds(new Set(logs.map(l => l.id)))} className="text-[10px] text-blue-600 font-bold px-3 py-1.5 rounded bg-blue-50 border border-blue-200 shadow-sm">เลือกทั้งหมด</button>
@@ -1520,7 +1606,7 @@
                                 <div className="text-[11px] text-slate-600 space-y-1">
                                   {log.details.map((dt, idx) => (
                                   <div key={idx} className="border-b border-slate-100/50 pb-1 last:border-0">
-                                      {typeof dt === 'object' && dt !== null && !React.isValidElement(dt) ? "⚠️ [รูปแบบประวัติเก่า]" : formatLogDetail(dt)}
+                                      {typeof dt === 'object' && dt !== null && !React.isValidElement(dt) ? <span className="text-orange-500 font-bold italic">⚠️ [ประวัติเก่าที่รวมยอดแล้ว]</span> : formatLogDetail(dt)}
                                   </div>
                                   ))}
                                 </div>
@@ -1548,16 +1634,17 @@
                   if(window.confirm('⚠️ ต้องการล้างข้อมูลการนับทั้งหมดเพื่อเริ่มใหม่หรือไม่?')) {
                     setPos1({...defaultDrawer}); setPos2({...defaultDrawer}); setPos1Stash({...defaultDrawer}); setPos2Stash({...defaultDrawer});
                     setTidel({ t1_20:0, t2_20:0, t3_20:0, t4_100:0, t5_100:0, t6_100:0, t7_100:0, t8_100:0 }); setUnderMachine(''); setLogs([]); setCurrentTx({receive:0,change:0}); setCurrentTxDetails({receive:{},change:{}});
-                    setBaseline(null); setSalesTotal(0); setDepositTotal(0); setBreakAdjustments(0); setMovements({ pos1: {...defaultDrawer}, pos2: {...defaultDrawer} }); setDraftedTotal(0); setVariances(defaultVariances); alert('ล้างข้อมูลเรียบร้อยแล้ว');
+                    setBaseline(null); setSalesTotal(0); setDepositTotal(0); setBreakAdjustments(0); setRushHourSales(0); setMovements({ pos1: {...defaultDrawer}, pos2: {...defaultDrawer} }); setDraftedTotal(0); setVariances(defaultVariances); alert('ล้างข้อมูลเรียบร้อยแล้ว');
                   }
                 }} className="w-full py-4 text-red-500 font-bold bg-white border border-red-200 rounded-xl shadow-sm">🗑️ ล้างข้อมูลรีเซ็ตทั้งหมด (Reset)</button>
               </div>
             )}
+            
 
           </div>
 
           {showLongPressMenu && (
-  <div className="fixed inset-0 bg-slate-900/60 z-[200] flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-slate-900/60 z-[200] flex items-center justify-center p-4 animate-[slideDown_0.2s_ease-out]">
               <div className="bg-white rounded-2xl shadow-2xl p-5 w-full max-w-xs">
                 <h3 className="font-bold text-lg mb-3 border-b border-slate-100 pb-2 text-slate-800 text-center">
                   จัดการ {longPressData.denom >= 1 ? `แบงก์/เหรียญ ${longPressData.denom}` : `เหรียญ ${longPressData.denom * 100} สต.`}
