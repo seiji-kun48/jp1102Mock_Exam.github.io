@@ -352,7 +352,6 @@
          const drawerSetter = activePos === 'pos1' ? setPos1 : setPos2;
          
          const nextState = { ...drawerState, [denom]: drawerState[denom] + (isReceive ? -targetQty : targetQty) };
-         const overrides = activePos === 'pos1' ? { pos1: nextState } : { pos2: nextState };
 
          drawerSetter(nextState);
          setMovements(prev => ({ ...prev, [activePos]: { ...prev[activePos], [denom]: prev[activePos][denom] + (isReceive ? -targetQty : targetQty) } }));
@@ -362,24 +361,19 @@
          
          setCurrentTxDetails(prev => { const nextModeObj = { ...prev[actionMode] }; delete nextModeObj[denom]; return { ...prev, [actionMode]: nextModeObj }; });
          
-         const diffVal = (targetQty * denom) * (isReceive ? -1 : 1);
-         const nextVar = variance + diffVal; 
-         const explicitDeltas = { [activePos]: { [denom]: (isReceive ? -targetQty : targetQty) } };
-         addLog(`♻️ ยกเลิกปุ่ม ${denom} (เฉพาะโหมด${isReceive ? 'รับเงิน' : 'หยิบทอน'})`, diffVal, [
-             `คืนเก๊ะ: POS ${activePos === 'pos1' ? '1' : '2'}`,
-             ...getFullStatusDetails(overrides, explicitDeltas)
-         ], nextVar, `RESET_${activePos}_${denom}`);
+         // [แก้ไข] ลบการเตือนออก และสั่งปิด Popup
          setShowLongPressMenu(false);
       };
 
       const applyDenomQty = (denom, newQty) => {
          const isReceive = actionMode === 'receive'; const currentQty = currentTxDetails[actionMode][denom] || 0;
-         const diff = newQty - currentQty; if (diff === 0) return;
+         const diff = newQty - currentQty; 
+         // [แก้ไข] ถ้าตัวเลขไม่เปลี่ยน ให้ปิด popup เลย
+         if (diff === 0) return setShowLongPressMenu(false); 
          
          const drawerState = activePos === 'pos1' ? pos1 : pos2;
          const drawerSetter = activePos === 'pos1' ? setPos1 : setPos2;
          const nextState = { ...drawerState, [denom]: drawerState[denom] + (isReceive ? diff : -diff) };
-         const overrides = activePos === 'pos1' ? { pos1: nextState } : { pos2: nextState };
 
          drawerSetter(nextState);
          
@@ -390,13 +384,8 @@
          setCurrentTx(prev => ({ ...prev, [actionMode]: prev[actionMode] + (diff * denom) }));
          setCurrentTxDetails(prev => ({ ...prev, [actionMode]: { ...prev[actionMode], [denom]: newQty } }));
          
-         const diffVal = diff * denom * (isReceive ? 1 : -1);
-         const nextVar = variance + diffVal;
-         const explicitDeltas = { [activePos]: { [denom]: (isReceive ? diff : -diff) } };
-         addLog(`⌨️ พิมพ์ระบุจำนวนแบงก์/เหรียญ ${denom}`, diffVal, [
-             `แก้ไขจำนวนในช่อง: ${isReceive ? 'รับเงิน' : 'หยิบทอน'}`, 
-             ...getFullStatusDetails(overrides, explicitDeltas)
-         ], nextVar, `INPUT_${activePos}_${denom}`);
+         // [แก้ไข] ลบการเตือนออก และสั่งปิด Popup ทันทีที่กดยืนยัน
+         setShowLongPressMenu(false); 
       };
 
       const handleActionClick = (val) => {
@@ -1568,7 +1557,7 @@
           </div>
 
           {showLongPressMenu && (
-            <div className="fixed inset-0 bg-slate-900/60 z-[200] flex items-center justify-center p-4 animate-[slideDown_0.2s_ease-out]">
+  <div className="fixed inset-0 bg-slate-900/60 z-[200] flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl shadow-2xl p-5 w-full max-w-xs">
                 <h3 className="font-bold text-lg mb-3 border-b border-slate-100 pb-2 text-slate-800 text-center">
                   จัดการ {longPressData.denom >= 1 ? `แบงก์/เหรียญ ${longPressData.denom}` : `เหรียญ ${longPressData.denom * 100} สต.`}
